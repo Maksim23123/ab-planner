@@ -13,6 +13,8 @@ services:
       context: .
       dockerfile: Dockerfile
     image: python_api
+    depends_on:
+      - db
     ports:
       - 8000:8000
     volumes:

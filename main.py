@@ -1,7 +1,1 @@
-from fastapi import FastAPI
-
-app = FastAPI()
-
-@app.get("/")
-def read_root():
-    return {"message": "Hello from container!!"}
+from app.main import app  # re-export for Docker entrypoint
