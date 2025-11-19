@@ -28,3 +28,17 @@ All routes are namespaced under `/api/v1` and return in-memory mock data so the 
 - `GET/POST /api/v1/student-group-selection` – Inspect or stub saving a student’s chosen group.
 
 These responses follow the data model outlined in `.local/app_folder_layout.md` and `.local/db_arhitecture_graph.md` so they can later be backed by real repositories without changing the contract.
+
+## Database models & migrations
+
+- SQLAlchemy models now live under `app/models/` and mirror the ER diagram from `.local/db_arhitecture_graph.md`.
+- Alembic is configured in `alembic.ini` with scripts placed in `app/migrations/`.
+- To create the schema locally run:
+  ```bash
+  alembic upgrade head
+  ```
+  Make sure your `.env` points to a running Postgres instance (Docker Compose supplies one at `db:5432`).
+- Generate future migrations with:
+  ```bash
+  alembic revision --autogenerate -m "describe change"
+  ```
