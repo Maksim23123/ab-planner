@@ -42,3 +42,17 @@ These responses follow the data model outlined in `.local/app_folder_layout.md` 
   ```bash
   alembic revision --autogenerate -m "describe change"
   ```
+
+## Seeding the database
+
+To load the mock dataset from `app/core/mock_data.py` into Postgres:
+
+```bash
+# From the host with your virtualenv active
+python -m app.scripts.seed_db
+
+# Or inside the API container
+docker compose run --rm api python -m app.scripts.seed_db
+```
+
+The script makes sure the database exists, runs Alembic migrations, truncates existing data, and inserts the fixtures with stable IDs to match the mock API responses.
