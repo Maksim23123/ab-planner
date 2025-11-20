@@ -1,0 +1,110 @@
+from __future__ import annotations
+
+from datetime import datetime
+from typing import Any, Dict, Iterable
+
+from fastapi import HTTPException, status
+from sqlalchemy import select
+from sqlalchemy.orm import Session, joinedload
+
+from app.models import Group, Lesson, Room, Subject, User
+
+LessonModel = Lesson
+
+
+def _with_relations() -> Iterable:
+    """Common relationship loading for consistent API payloads."""
+    return (
+        joinedload(LessonModel.subject),
+        joinedload(LessonModel.room),
+        joinedload(LessonModel.group).joinedload(Group.program),
+        joinedload(LessonModel.group).joinedload(Group.program_year),
+        joinedload(LessonModel.group).joinedload(Group.specialization),
+        joinedload(LessonModel.group).joinedload(Group.group_type),
+        joinedload(LessonModel.lecturer),
+    )
+
+
+def _validate_time_window(starts_at: datetime, ends_at: datetime) -> None:
+    if ends_at <= starts_at:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="ends_at must be after starts_at",
+        )
+
+
+def _ensure_fk(db: Session, model, pk: int | None, label: str) -> None:
+    if pk is None:
+        return
+    exists = db.get(model, pk)
+    if not exists:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"{label} not found")
+
+
+def list_lessons(
+    db: Session,
+    *,
+    group_id: int | None = None,
+    date_from: datetime | None = None,
+    date_to: datetime | None = None,
+) -> list[LessonModel]:
+    stmt = select(LessonModel).options(*_with_relations())
+    if group_id is not None:
+        stmt = stmt.where(LessonModel.group_id == group_id)
+    if date_from is not None:
+        stmt = stmt.where(LessonModel.starts_at >= date_from)
+    if date_to is not None:
+        stmt = stmt.where(LessonModel.starts_at <= date_to)
+    return list(db.scalars(stmt).all())
+
+
+def get_lesson(db: Session, lesson_id: int) -> LessonModel:
+    stmt = select(LessonModel).options(*_with_relations()).where(LessonModel.id == lesson_id)
+    lesson = db.execute(stmt).scalar_one_or_none()
+    if not lesson:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Lesson not found")
+    return lesson
+
+
+def create_lesson(db: Session, data: Dict[str, Any]) -> LessonModel:
+    _ensure_fk(db, Subject, data.get("subject_id"), "Subject")
+    _ensure_fk(db, User, data.get("lecturer_user_id"), "Lecturer")
+    _ensure_fk(db, Room, data.get("room_id"), "Room")
+    _ensure_fk(db, Group, data.get("group_id"), "Group")
+    _validate_time_window(data["starts_at"], data["ends_at"])
+
+    lesson = LessonModel(**data)
+    db.add(lesson)
+    db.commit()
+    db.refresh(lesson)
+    return get_lesson(db, lesson.id)
+
+
+def update_lesson(db: Session, lesson_id: int, data: Dict[str, Any]) -> LessonModel:
+    lesson = db.get(LessonModel, lesson_id)
+    if not lesson:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Lesson not found")
+
+    _ensure_fk(db, Subject, data.get("subject_id"), "Subject")
+    _ensure_fk(db, User, data.get("lecturer_user_id"), "Lecturer")
+    _ensure_fk(db, Room, data.get("room_id"), "Room")
+    _ensure_fk(db, Group, data.get("group_id"), "Group")
+
+    starts_at = data.get("starts_at", lesson.starts_at)
+    ends_at = data.get("ends_at", lesson.ends_at)
+    _validate_time_window(starts_at, ends_at)
+
+    for field, value in data.items():
+        setattr(lesson, field, value)
+
+    db.commit()
+    db.refresh(lesson)
+    return get_lesson(db, lesson.id)
+
+
+def delete_lesson(db: Session, lesson_id: int) -> None:
+    lesson = db.get(LessonModel, lesson_id)
+    if not lesson:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Lesson not found")
+    db.delete(lesson)
+    db.commit()

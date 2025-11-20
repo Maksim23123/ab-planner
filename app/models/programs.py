@@ -78,3 +78,8 @@ class Group(Base):
     selections: Mapped[List["StudentGroupSelection"]] = relationship(
         "StudentGroupSelection", back_populates="group"
     )
+
+    @property
+    def year(self) -> ProgramYear:
+        """Alias to keep API schemas using `year` compatible with the ORM relationship."""
+        return self.program_year
