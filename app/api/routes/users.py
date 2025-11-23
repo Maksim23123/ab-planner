@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Path, Query
+from fastapi import APIRouter, Depends, Path
 from sqlalchemy.orm import Session
 
 from app.schemas.users import UserProfile
@@ -10,12 +10,10 @@ router = APIRouter(prefix="/users", tags=["users"])
 
 @router.get("/me", response_model=UserProfile)
 def read_current_user(
-    user_id: int | None = Query(default=None, description="Override user id"),
     db: Session = Depends(deps.get_db),
     actor: deps.CurrentActor = Depends(deps.get_current_actor),
 ):
-    target_id = user_id or actor.user.id
-    return user_service.get_user_profile(db, target_id)
+    return user_service.get_user_profile(db, actor.user.id)
 
 
 @router.get("", response_model=list[UserProfile])
