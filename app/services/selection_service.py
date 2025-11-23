@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from fastapi import HTTPException, status
-from sqlalchemy import select
+from fastapi import HTTPException
+from sqlalchemy import select, delete
 from sqlalchemy.orm import Session
 
 from app.models import Group, StudentGroupSelection, User
@@ -24,6 +24,8 @@ def create_selection(db: Session, *, user_id: int, group_id: int) -> StudentGrou
     if db.get(User, user_id) is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
+    # Replace previous selection for the user
+    db.execute(delete(StudentGroupSelection).where(StudentGroupSelection.user_id == user_id))
     selection = StudentGroupSelection(
         user_id=user_id,
         group_id=group_id,
@@ -33,3 +35,8 @@ def create_selection(db: Session, *, user_id: int, group_id: int) -> StudentGrou
     db.commit()
     db.refresh(selection)
     return selection
+
+
+def delete_selection(db: Session, *, user_id: int) -> None:
+    db.execute(delete(StudentGroupSelection).where(StudentGroupSelection.user_id == user_id))
+    db.commit()

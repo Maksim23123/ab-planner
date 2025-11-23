@@ -23,6 +23,16 @@ class Subject(BaseModel):
     code: str
 
 
+class SubjectCreate(BaseModel):
+    name: str
+    code: str
+
+
+class SubjectUpdate(BaseModel):
+    name: str | None = None
+    code: str | None = None
+
+
 class Room(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -30,6 +40,18 @@ class Room(BaseModel):
     number: str
     building: str
     capacity: int
+
+
+class RoomCreate(BaseModel):
+    number: str
+    building: str
+    capacity: int
+
+
+class RoomUpdate(BaseModel):
+    number: str | None = None
+    building: str | None = None
+    capacity: int | None = None
 
 
 class LessonBase(BaseModel):
@@ -56,6 +78,7 @@ class LessonUpdate(BaseModel):
     ends_at: datetime | None = None
     status: LessonStatus | None = None
     lesson_type: str | None = None
+    scope: str | None = None
 
 
 class Lesson(BaseModel):

@@ -16,3 +16,13 @@ class Notification(BaseModel):
     attempts: int
     created_at: datetime
     sent_at: datetime | None
+
+
+class NotificationCreate(BaseModel):
+    user_id: int
+    payload: Dict[str, Any]
+    status: str = "queued"
+
+
+class NotificationUpdate(BaseModel):
+    status: str | None = None

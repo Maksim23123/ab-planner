@@ -1,12 +1,13 @@
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, Path, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api import deps
 from app.schemas.lessons import Lesson, LessonCreate, LessonUpdate
 from app.services import lesson_service
-from app.models.users import User
+from app.models.selections import StudentGroupSelection
 
 router = APIRouter(prefix="/lessons", tags=["lessons"])
 
@@ -17,7 +18,7 @@ def list_lessons(
     date_from: datetime | None = Query(default=None, description="Start date filter"),
     date_to: datetime | None = Query(default=None, description="End date filter"),
     db: Session = Depends(deps.get_db),
-    _current_user: User = Depends(deps.get_current_user),
+    _actor: deps.CurrentActor = Depends(deps.get_current_actor),
 ):
     return lesson_service.list_lessons(db, group_id=group_id, date_from=date_from, date_to=date_to)
 
@@ -26,7 +27,7 @@ def list_lessons(
 def read_lesson(
     lesson_id: int = Path(..., description="Lesson identifier"),
     db: Session = Depends(deps.get_db),
-    _current_user: User = Depends(deps.get_current_user),
+    _actor: deps.CurrentActor = Depends(deps.get_current_actor),
 ):
     return lesson_service.get_lesson(db, lesson_id)
 
@@ -35,8 +36,12 @@ def read_lesson(
 def create_lesson(
     payload: LessonCreate,
     db: Session = Depends(deps.get_db),
-    _current_user: User = Depends(deps.get_current_user),
+    actor: deps.CurrentActor = Depends(deps.get_current_actor),
 ):
+    if actor.role == "student":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
+    if actor.role == "lecturer" and payload.lecturer_user_id != actor.user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
     return lesson_service.create_lesson(db, payload.model_dump())
 
 
@@ -45,9 +50,34 @@ def update_lesson(
     payload: LessonUpdate,
     lesson_id: int = Path(..., description="Lesson identifier"),
     db: Session = Depends(deps.get_db),
-    _current_user: User = Depends(deps.get_current_user),
+    actor: deps.CurrentActor = Depends(deps.get_current_actor),
 ):
     data = payload.model_dump(exclude_unset=True)
+    lesson = lesson_service.get_lesson(db, lesson_id)
+
+    if actor.role == "student":
+        selection = db.execute(
+            select(StudentGroupSelection).where(
+                StudentGroupSelection.user_id == actor.user.id,
+                StudentGroupSelection.group_id == lesson.group_id,
+            )
+        ).scalar_one_or_none()
+        if selection is None:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
+        scope = data.pop("scope", "occurrence")
+        if scope != "occurrence":
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
+        allowed_fields = {"starts_at", "ends_at", "status", "room_id"}
+        disallowed = set(data.keys()) - allowed_fields
+        if disallowed:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
+    elif actor.role == "lecturer":
+        if lesson.lecturer_user_id != actor.user.id:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
+        data.pop("scope", None)
+    else:
+        data.pop("scope", None)
+
     return lesson_service.update_lesson(db, lesson_id, data)
 
 
@@ -55,6 +85,11 @@ def update_lesson(
 def delete_lesson(
     lesson_id: int = Path(..., description="Lesson identifier"),
     db: Session = Depends(deps.get_db),
-    _current_user: User = Depends(deps.get_current_user),
+    actor: deps.CurrentActor = Depends(deps.get_current_actor),
 ):
+    lesson = lesson_service.get_lesson(db, lesson_id)
+    if actor.role == "student":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
+    if actor.role == "lecturer" and lesson.lecturer_user_id != actor.user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
     lesson_service.delete_lesson(db, lesson_id)

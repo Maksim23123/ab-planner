@@ -5,6 +5,9 @@ from pydantic import BaseModel, ConfigDict
 
 
 class SelectionCreate(BaseModel):
+    program_id: int | None = None
+    program_year_id: int | None = None
+    specialization_id: int | None = None
     group_id: int
     user_id: int | None = None
 
