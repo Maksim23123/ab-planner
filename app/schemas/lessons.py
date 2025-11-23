@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from enum import Enum
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.schemas.programs import Group
 from app.schemas.users import UserSummary
@@ -93,3 +93,18 @@ class Lesson(BaseModel):
     room: Room
     group: Group
     lecturer: UserSummary
+
+
+class LessonSeriesCreate(BaseModel):
+    lesson: LessonCreate
+    repeat_every_days: int = Field(
+        default=7,
+        gt=0,
+        description="Interval between lessons in days (e.g. 7 for weekly, 14 for biweekly).",
+    )
+    occurrences: int = Field(
+        default=1,
+        gt=0,
+        le=52,
+        description="How many lessons to create in the series, including the first occurrence.",
+    )

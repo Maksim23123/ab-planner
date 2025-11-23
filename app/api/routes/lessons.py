@@ -5,7 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api import deps
-from app.schemas.lessons import Lesson, LessonCreate, LessonUpdate
+from app.schemas.lessons import Lesson, LessonCreate, LessonSeriesCreate, LessonUpdate
 from app.services import lesson_service
 from app.models.selections import StudentGroupSelection
 
@@ -23,15 +23,6 @@ def list_lessons(
     return lesson_service.list_lessons(db, group_id=group_id, date_from=date_from, date_to=date_to)
 
 
-@router.get("/{lesson_id}", response_model=Lesson)
-def read_lesson(
-    lesson_id: int = Path(..., description="Lesson identifier"),
-    db: Session = Depends(deps.get_db),
-    _actor: deps.CurrentActor = Depends(deps.get_current_actor),
-):
-    return lesson_service.get_lesson(db, lesson_id)
-
-
 @router.post("", response_model=Lesson, status_code=status.HTTP_201_CREATED)
 def create_lesson(
     payload: LessonCreate,
@@ -43,6 +34,35 @@ def create_lesson(
     if actor.role == "lecturer" and payload.lecturer_user_id != actor.user.id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
     return lesson_service.create_lesson(db, payload.model_dump())
+
+
+@router.post("/series", response_model=list[Lesson], status_code=status.HTTP_201_CREATED)
+def create_lesson_series(
+    payload: LessonSeriesCreate,
+    db: Session = Depends(deps.get_db),
+    actor: deps.CurrentActor = Depends(deps.get_current_actor),
+):
+    base = payload.lesson
+    if actor.role == "student":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
+    if actor.role == "lecturer" and base.lecturer_user_id != actor.user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
+
+    return lesson_service.create_lesson_series(
+        db,
+        base.model_dump(),
+        occurrences=payload.occurrences,
+        repeat_every_days=payload.repeat_every_days,
+    )
+
+
+@router.get("/{lesson_id}", response_model=Lesson)
+def read_lesson(
+    lesson_id: int = Path(..., description="Lesson identifier"),
+    db: Session = Depends(deps.get_db),
+    _actor: deps.CurrentActor = Depends(deps.get_current_actor),
+):
+    return lesson_service.get_lesson(db, lesson_id)
 
 
 @router.patch("/{lesson_id}", response_model=Lesson)

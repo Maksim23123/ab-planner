@@ -45,6 +45,7 @@ Headers: `X-User-Id`, `X-User-Role` (`student|lecturer|admin`)
 - **Lessons**
   - `GET /lessons` (filters: `group_id`, `date_from`, `date_to`), `GET /lessons/{id}`
   - `POST /lessons` (admin or lecturer-own)
+  - `POST /lessons/series` (admin or lecturer-own) — create a recurring set of lessons by providing the base lesson, interval in days, and number of occurrences
   - `PATCH /lessons/{id}` (scope/field rules by role)
   - `DELETE /lessons/{id}` (admin or lecturer-own)
 - **Student Group Selection**

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Dict, Iterable
 
 from fastapi import HTTPException, status
@@ -78,6 +78,59 @@ def create_lesson(db: Session, data: Dict[str, Any]) -> LessonModel:
     db.commit()
     db.refresh(lesson)
     return get_lesson(db, lesson.id)
+
+
+def create_lesson_series(
+    db: Session,
+    data: Dict[str, Any],
+    *,
+    occurrences: int,
+    repeat_every_days: int,
+) -> list[LessonModel]:
+    if occurrences < 1:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="occurrences must be at least 1"
+        )
+    if repeat_every_days < 1:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="repeat_every_days must be at least 1"
+        )
+
+    _ensure_fk(db, Subject, data.get("subject_id"), "Subject")
+    _ensure_fk(db, User, data.get("lecturer_user_id"), "Lecturer")
+    _ensure_fk(db, Room, data.get("room_id"), "Room")
+    _ensure_fk(db, Group, data.get("group_id"), "Group")
+    _validate_time_window(data["starts_at"], data["ends_at"])
+
+    interval = timedelta(days=repeat_every_days)
+    starts_at = data["starts_at"]
+    ends_at = data["ends_at"]
+
+    created: list[LessonModel] = []
+    for index in range(occurrences):
+        offset = interval * index
+        occurrence_data = {
+            **data,
+            "starts_at": starts_at + offset,
+            "ends_at": ends_at + offset,
+        }
+        lesson = LessonModel(**occurrence_data)
+        db.add(lesson)
+        created.append(lesson)
+
+    db.commit()
+
+    ids = [lesson.id for lesson in created]
+    if not ids:
+        return []
+
+    stmt = (
+        select(LessonModel)
+        .options(*_with_relations())
+        .where(LessonModel.id.in_(ids))
+        .order_by(LessonModel.starts_at, LessonModel.id)
+    )
+    return list(db.scalars(stmt).all())
 
 
 def update_lesson(db: Session, lesson_id: int, data: Dict[str, Any]) -> LessonModel:
