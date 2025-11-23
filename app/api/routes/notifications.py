@@ -1,7 +1,10 @@
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Depends, Query
+from sqlalchemy.orm import Session
 
 from app.schemas.notifications import Notification
-from app.services import mock_store
+from app.api import deps
+from app.services import notification_service
+from app.models.users import User
 
 router = APIRouter(prefix="/notifications", tags=["notifications"])
 
@@ -10,5 +13,8 @@ router = APIRouter(prefix="/notifications", tags=["notifications"])
 def list_notifications(
     user_id: int | None = Query(default=None, description="Filter by user id"),
     status: str | None = Query(default=None, description="Filter by notification status"),
+    db: Session = Depends(deps.get_db),
+    _current_user: User = Depends(deps.get_current_user),
 ):
-    return mock_store.list_notifications(user_id=user_id, status=status)
+    target_id = user_id or _current_user.id
+    return notification_service.list_notifications(db, user_id=target_id, status=status)

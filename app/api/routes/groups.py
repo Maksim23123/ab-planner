@@ -1,7 +1,10 @@
-from fastapi import APIRouter, Path, Query
+from fastapi import APIRouter, Depends, Path, Query
+from sqlalchemy.orm import Session
 
 from app.schemas.programs import Group
-from app.services import mock_store
+from app.api import deps
+from app.services import program_service
+from app.models.users import User
 
 router = APIRouter(prefix="/groups", tags=["groups"])
 
@@ -12,8 +15,11 @@ def list_groups(
     program_year_id: int | None = Query(default=None),
     specialization_id: int | None = Query(default=None),
     group_type: str | None = Query(default=None),
+    db: Session = Depends(deps.get_db),
+    _current_user: User = Depends(deps.get_current_user),
 ):
-    return mock_store.list_groups(
+    return program_service.list_groups(
+        db,
         program_id=program_id,
         program_year_id=program_year_id,
         specialization_id=specialization_id,
@@ -22,5 +28,9 @@ def list_groups(
 
 
 @router.get("/{group_id}", response_model=Group)
-def read_group(group_id: int = Path(..., description="Group identifier")):
-    return mock_store.get_group(group_id)
+def read_group(
+    group_id: int = Path(..., description="Group identifier"),
+    db: Session = Depends(deps.get_db),
+    _current_user: User = Depends(deps.get_current_user),
+):
+    return program_service.get_group(db, group_id)
