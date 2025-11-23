@@ -14,20 +14,46 @@ AB Planner is a FastAPI backend that serves both administrative and student-faci
    docker compose up --build
    ```
    The API becomes available on `http://localhost:8000` and Postgres on `localhost:5432`.
-3. **Explore the mock API** – Open `http://localhost:8000/docs` to try the endpoints.
+3. **Explore the API** — Open `http://localhost:8000/docs` to try the endpoints.
 
-## Available mock endpoints
+## API surface (spec-aligned)
 
-All routes are namespaced under `/api/v1` and return in-memory mock data so the frontend can work before the real repositories are in place.
+Base path: `/api/v1`  
+Headers: `X-User-Id`, `X-User-Role` (`student|lecturer|admin`)
 
-- `GET /api/v1/users/me` – Current user profile (override with `?user_id=`).
-- `GET /api/v1/programs` and `GET /api/v1/programs/{id}/groups` – Academic structures plus groups.
-- `GET /api/v1/groups` and `GET /api/v1/groups/{id}` – Group catalog with filtering.
-- `GET /api/v1/lessons` – Lesson schedule filtered by group and/or date range.
-- `GET /api/v1/notifications` – Notification outbox for a user.
-- `GET/POST /api/v1/student-group-selection` – Inspect or stub saving a student’s chosen group.
-
-These responses follow the data model outlined in `.local/app_folder_layout.md` and `.local/db_arhitecture_graph.md` so they can later be backed by real repositories without changing the contract.
+- **Users**
+  - `GET /users/me` — current user.
+  - `GET /users` (admin), `GET /users/{id}` (admin).
+- **Programs** (read for all; admin mutates)
+  - `GET /programs`, `GET /programs/{id}`
+  - `POST /programs`, `PATCH /programs/{id}`, `DELETE /programs/{id}` (admin)
+- **Program Years** (read for all; admin mutates)
+  - `GET /program-years`, `GET /program-years/{id}`
+  - `POST /program-years`, `PATCH /program-years/{id}`, `DELETE /program-years/{id}` (admin)
+- **Specializations** (read for all; admin mutates)
+  - `GET /specializations`, `GET /specializations/{id}`
+  - `POST /specializations`, `PATCH /specializations/{id}`, `DELETE /specializations/{id}` (admin)
+- **Groups** (read for all; admin mutates)
+  - `GET /groups` with filters `program_id`, `program_year_id`, `specialization_id`, `group_type`
+  - `GET /groups/{id}`, `POST /groups`, `PATCH /groups/{id}`, `DELETE /groups/{id}` (admin)
+- **Subjects** (read for all; admin mutates)
+  - `GET /subjects`, `GET /subjects/{id}`
+  - `POST /subjects`, `PATCH /subjects/{id}`, `DELETE /subjects/{id}` (admin)
+- **Rooms** (read for all; admin mutates)
+  - `GET /rooms`, `GET /rooms/{id}`
+  - `POST /rooms`, `PATCH /rooms/{id}`, `DELETE /rooms/{id}` (admin)
+- **Lessons**
+  - `GET /lessons` (filters: `group_id`, `date_from`, `date_to`), `GET /lessons/{id}`
+  - `POST /lessons` (admin or lecturer-own)
+  - `PATCH /lessons/{id}` (scope/field rules by role)
+  - `DELETE /lessons/{id}` (admin or lecturer-own)
+- **Student Group Selection**
+  - `GET /student-group-selection`
+  - `PUT /student-group-selection` (student own or admin with `user_id`)
+  - `DELETE /student-group-selection` (same access rules)
+- **Notifications**
+  - `GET /notifications` (own; admin can query any `user_id`; optional `status` filter)
+  - `POST /notifications` (admin), `PATCH /notifications/{id}` (owner or admin)
 
 ## Database models & migrations
 
