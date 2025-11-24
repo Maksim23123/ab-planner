@@ -1,18 +1,20 @@
 from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 
 from app.api.router import api_router
 from app.core.config import get_settings
 from app.core.database import ensure_database
-
-from app.scripts.check_db import check_db
 from app.core.run_migrations import ensure_schema_up_to_date
+from app.scripts.check_db import check_db
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     ensure_database()
     ensure_schema_up_to_date()
     yield
+
 
 def create_app() -> FastAPI:
     settings = get_settings()

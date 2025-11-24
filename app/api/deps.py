@@ -1,15 +1,17 @@
 from __future__ import annotations
 
-from fastapi import Depends, Header, HTTPException
+from fastapi import Depends, HTTPException
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 from typing import NamedTuple
 
-from app.core.config import get_settings
 from app.core.database import SessionLocal
+from app.core import security
 from app.models.users import User
 
 
 ALLOWED_ROLES = {"student", "lecturer", "admin"}
+auth_scheme = HTTPBearer(auto_error=False)
 
 
 class CurrentActor(NamedTuple):
@@ -28,20 +30,27 @@ def get_db():
 
 def get_current_actor(
     db: Session = Depends(get_db),
-    x_user_id: int | None = Header(default=None),
-    x_user_role: str | None = Header(default=None),
+    credentials: HTTPAuthorizationCredentials | None = Depends(auth_scheme),
 ) -> CurrentActor:
-    """
-    Temporary auth stub. Uses `X-User-Id` and `X-User-Role` headers when present,
-    otherwise falls back to the default user and their role.
-    """
-    settings = get_settings()
-    user_id = x_user_id or settings.default_user_id
+    """Resolve the current actor from a bearer access token."""
+
+    if credentials is None:
+        raise HTTPException(status_code=401, detail="Authorization header missing")
+
+    try:
+        payload = security.decode_token(credentials.credentials, security.ACCESS_TOKEN_TYPE)
+    except security.AuthTokenError as exc:
+        raise HTTPException(status_code=401, detail="Invalid access token") from exc
+
+    user_id = payload.get("user_id")
+    if not isinstance(user_id, int):
+        raise HTTPException(status_code=401, detail="Invalid token payload")
+
     user = db.get(User, user_id)
     if not user:
         raise HTTPException(status_code=401, detail="User not found")
 
-    role = (x_user_role or getattr(user.role, "code", None) or "").lower()
+    role = (getattr(user.role, "code", None) or "").lower()
     if role not in ALLOWED_ROLES:
         raise HTTPException(status_code=403, detail="Role not permitted")
 

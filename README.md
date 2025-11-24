@@ -8,7 +8,7 @@ AB Planner is a FastAPI backend that serves both administrative and student-faci
    ```bash
    cp .env.example .env
    ```
-   Adjust the values if you want to override the default Postgres credentials.
+   Adjust the values for Postgres *and* provide the Microsoft OAuth credentials (`MS_CLIENT_ID`, `MS_CLIENT_SECRET`, `MS_TENANT`, `MS_REDIRECT_URI`, scopes) plus the auth token settings (`AUTH_SECRET_KEY`, TTLs, default role). These power the login endpoints described below.
 2. **Run the stack**
    ```bash
    docker compose up --build
@@ -19,11 +19,22 @@ AB Planner is a FastAPI backend that serves both administrative and student-faci
 ## API surface (spec-aligned)
 
 Base path: `/api/v1`  
-Headers: `X-User-Id`, `X-User-Role` (`student|lecturer|admin`)
+Headers: `Authorization: Bearer <access_token>`
+
+### Authentication flow
+
+1. The front-end initiates the Microsoft OAuth 2.0 authorization code flow (PKCE) and, after the user signs in, receives a `{ code, code_verifier }` pair. You can construct the authorize URL yourself or call `GET /api/v1/auth/microsoft/login-url?code_challenge=<value>` to have the API generate a Microsoft login link that already contains the correct tenant/client/scope parameters; keep the PKCE `code_verifier` so you can complete the exchange.
+2. Call `POST /api/v1/auth/microsoft/token` with `{ code, code_verifier, redirect_uri }`. The backend exchanges the code with Microsoft, links/creates a user by email, and returns `{ access_token, refresh_token, expires_in, user }`.
+3. Include the access token from the response in the `Authorization` header when calling any protected endpoint.
+4. When the access token expires, call `POST /api/v1/auth/refresh` with `{ refresh_token }` to obtain a fresh pair of tokens.
 
 - **Users**
   - `GET /users/me` — current user.
   - `GET /users` (admin), `GET /users/{id}` (admin).
+- **Auth**
+  - `GET /auth/microsoft/login-url` — helper that returns the Microsoft authorize URL for a given PKCE `code_challenge` (optional `state`).
+  - `POST /auth/microsoft/token` — exchange Microsoft authorization code for AB Planner tokens.
+  - `POST /auth/refresh` — rotate tokens using a refresh token.
 - **Programs** (read for all; admin mutates)
   - `GET /programs`, `GET /programs/{id}`
   - `POST /programs`, `PATCH /programs/{id}`, `DELETE /programs/{id}` (admin)
