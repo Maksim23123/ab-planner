@@ -2,9 +2,19 @@ from __future__ import annotations
 
 from fastapi import HTTPException, status
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models import Room, Subject
+
+
+def _safe_delete(db: Session, record, *, detail: str) -> None:
+    try:
+        db.delete(record)
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=detail)
 
 
 def list_subjects(db: Session) -> list[Subject]:
@@ -44,8 +54,7 @@ def delete_subject(db: Session, subject_id: int) -> None:
     subject = db.get(Subject, subject_id)
     if not subject:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Subject not found")
-    db.delete(subject)
-    db.commit()
+    _safe_delete(db, subject, detail="Subject is still in use")
 
 
 def list_rooms(db: Session) -> list[Room]:
@@ -94,5 +103,4 @@ def delete_room(db: Session, room_id: int) -> None:
     room = db.get(Room, room_id)
     if not room:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Room not found")
-    db.delete(room)
-    db.commit()
+    _safe_delete(db, room, detail="Room is still in use")

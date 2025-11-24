@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from fastapi import HTTPException, status
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
 from app.models import Group, Program, ProgramYear, Specialization, GroupType
@@ -16,7 +17,7 @@ def list_programs(db: Session) -> list[Program]:
         )
         .order_by(Program.id)
     )
-    return list(db.scalars(stmt).all())
+    return list(db.execute(stmt).unique().scalars().all())
 
 
 def get_program(db: Session, program_id: int) -> Program:
@@ -57,8 +58,7 @@ def delete_program(db: Session, program_id: int) -> None:
     program = db.get(Program, program_id)
     if not program:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Program not found")
-    db.delete(program)
-    db.commit()
+    _safe_delete(db, program, detail="Program is still in use")
 
 
 def list_program_years(db: Session) -> list[ProgramYear]:
@@ -90,6 +90,15 @@ def update_program_year(db: Session, year_id: int, *, year: int | None = None, p
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Program year not found")
     if program_id is not None and db.get(Program, program_id) is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Program not found")
+    if program_id is not None and program_id != record.program_id:
+        in_use = db.scalar(
+            select(Group.id).where(Group.program_year_id == year_id).limit(1)
+        )
+        if in_use is not None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Program year is still linked to groups and cannot change program",
+            )
     if program_id is not None:
         record.program_id = program_id
     if year is not None:
@@ -103,8 +112,7 @@ def delete_program_year(db: Session, year_id: int) -> None:
     record = db.get(ProgramYear, year_id)
     if not record:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Program year not found")
-    db.delete(record)
-    db.commit()
+    _safe_delete(db, record, detail="Program year is still in use")
 
 
 def list_specializations(db: Session) -> list[Specialization]:
@@ -142,6 +150,15 @@ def update_specialization(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Specialization not found")
     if program_id is not None and db.get(Program, program_id) is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Program not found")
+    if program_id is not None and program_id != spec.program_id:
+        in_use = db.scalar(
+            select(Group.id).where(Group.specialization_id == spec_id).limit(1)
+        )
+        if in_use is not None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Specialization is still linked to groups and cannot change program",
+            )
     if program_id is not None:
         spec.program_id = program_id
     if name is not None:
@@ -155,8 +172,7 @@ def delete_specialization(db: Session, spec_id: int) -> None:
     spec = db.get(Specialization, spec_id)
     if not spec:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Specialization not found")
-    db.delete(spec)
-    db.commit()
+    _safe_delete(db, spec, detail="Specialization is still in use")
 
 
 def list_groups(
@@ -206,6 +222,33 @@ def _ensure_group_type(db: Session, code: str) -> None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Group type not found")
 
 
+def _safe_delete(db: Session, record, *, detail: str) -> None:
+    try:
+        db.delete(record)
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=detail)
+
+
+def _validate_group_relationships(
+    *,
+    program_id: int,
+    program_year: ProgramYear,
+    specialization: Specialization,
+) -> None:
+    if program_year.program_id != program_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Program year does not belong to the specified program",
+        )
+    if specialization.program_id != program_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Specialization does not belong to the specified program",
+        )
+
+
 def create_group(
     db: Session,
     *,
@@ -215,12 +258,20 @@ def create_group(
     group_type_code: str,
     code: str,
 ) -> Group:
-    if db.get(Program, program_id) is None:
+    program = db.get(Program, program_id)
+    if not program:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Program not found")
-    if db.get(ProgramYear, program_year_id) is None:
+    program_year = db.get(ProgramYear, program_year_id)
+    if not program_year:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Program year not found")
-    if db.get(Specialization, specialization_id) is None:
+    specialization = db.get(Specialization, specialization_id)
+    if not specialization:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Specialization not found")
+    _validate_group_relationships(
+        program_id=program.id,
+        program_year=program_year,
+        specialization=specialization,
+    )
     _ensure_group_type(db, group_type_code)
 
     group = Group(
@@ -249,12 +300,29 @@ def update_group(
     group = db.get(Group, group_id)
     if not group:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Group not found")
-    if program_id is not None and db.get(Program, program_id) is None:
+
+    new_program_id = program_id if program_id is not None else group.program_id
+    new_program_year_id = program_year_id if program_year_id is not None else group.program_year_id
+    new_specialization_id = (
+        specialization_id if specialization_id is not None else group.specialization_id
+    )
+
+    program = db.get(Program, new_program_id)
+    if not program:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Program not found")
-    if program_year_id is not None and db.get(ProgramYear, program_year_id) is None:
+    program_year = db.get(ProgramYear, new_program_year_id)
+    if not program_year:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Program year not found")
-    if specialization_id is not None and db.get(Specialization, specialization_id) is None:
+    specialization = db.get(Specialization, new_specialization_id)
+    if not specialization:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Specialization not found")
+
+    _validate_group_relationships(
+        program_id=program.id,
+        program_year=program_year,
+        specialization=specialization,
+    )
+
     if group_type_code is not None:
         _ensure_group_type(db, group_type_code)
 
@@ -278,5 +346,4 @@ def delete_group(db: Session, group_id: int) -> None:
     group = db.get(Group, group_id)
     if not group:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Group not found")
-    db.delete(group)
-    db.commit()
+    _safe_delete(db, group, detail="Group is still in use")

@@ -94,6 +94,9 @@ def update_lesson(
     elif actor.role == "lecturer":
         if lesson.lecturer_user_id != actor.user.id:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
+        forbidden_identity_fields = {"lecturer_user_id", "group_id", "subject_id"}
+        if forbidden_identity_fields.intersection(data):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
         data.pop("scope", None)
     else:
         data.pop("scope", None)

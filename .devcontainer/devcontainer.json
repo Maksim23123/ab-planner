@@ -7,6 +7,11 @@
 			"source": "vscode-server-data", 
 			"target": "/vscode/vscode-server", 
 			"type": "volume" 
+		},
+		{ 
+			"source": "vscode-codex_auth", 
+			"target": "/root/.codex", 
+			"type": "volume" 
 		}
 	],
 
