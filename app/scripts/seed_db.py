@@ -1,3 +1,4 @@
+# Bash command to run: python -m app.scripts.seed_db
 from __future__ import annotations
 
 from typing import Iterable

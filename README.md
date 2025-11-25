@@ -83,7 +83,27 @@ Headers: `Authorization: Bearer <access_token>`
 
 ## Seeding the database
 
-To load the mock dataset from `app/core/mock_data.py` into Postgres:
+To seed only the reference data the API requires (roles, group types, and a default admin user), without wiping existing records:
+
+```bash
+# Optionally override the admin user that will be ensured
+$env:ADMIN_EMAIL="admin@example.edu"
+$env:ADMIN_NAME="Admin User"
+# Decide whether to create/update an admin user (default: false)
+$env:SEED_ADMIN="true"
+
+# From the host with your virtualenv active
+python -m app.scripts.seed_minimal_db
+
+# Or inside the API container
+docker compose run --rm `
+  -e ADMIN_EMAIL=$env:ADMIN_EMAIL `
+  -e ADMIN_NAME=$env:ADMIN_NAME `
+  -e SEED_ADMIN=$env:SEED_ADMIN `
+  api python -m app.scripts.seed_minimal_db
+```
+
+To load the full mock dataset from `app/core/mock_data.py` into Postgres:
 
 ```bash
 # From the host with your virtualenv active
@@ -93,4 +113,4 @@ python -m app.scripts.seed_db
 docker compose run --rm api python -m app.scripts.seed_db
 ```
 
-The script makes sure the database exists, runs Alembic migrations, truncates existing data, and inserts the fixtures with stable IDs to match the mock API responses.
+Both scripts ensure the database exists and run Alembic migrations. The minimal seeder leaves existing data intact, while the full seeder truncates tables and inserts the fixtures with stable IDs to match the mock API responses.

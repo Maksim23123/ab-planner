@@ -26,7 +26,15 @@ class Settings(BaseSettings):
     auth_refresh_token_exp_minutes: int = Field(60 * 24 * 30, alias="AUTH_REFRESH_TOKEN_EXPIRES_MINUTES")
     auth_default_role_code: str = Field("student", alias="AUTH_DEFAULT_ROLE")
 
-    model_config = SettingsConfigDict(env_file=".env")
+    # Seeder options (optional)
+    seed_admin: bool = Field(False, alias="SEED_ADMIN")
+    admin_email: str = Field("admin@example.edu", alias="ADMIN_EMAIL")
+    admin_name: str = Field("Admin User", alias="ADMIN_NAME")
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        extra="allow",  # ignore unrelated env vars (e.g., seeding toggles)
+    )
     
 
 
