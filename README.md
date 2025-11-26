@@ -29,11 +29,12 @@ Headers: `Authorization: Bearer <access_token>`
 4. When the access token expires, call `POST /api/v1/auth/refresh` with `{ refresh_token }` to obtain a fresh pair of tokens.
 
 - **Users**
-  - `GET /users/me` — current user.
+  - `GET /users/me` – current user.
   - `GET /users` (admin), `GET /users/{id}` (admin).
+  - `PATCH /users/{id}/role` (admin) - set role by `role_id` (only student or lecturer; cannot assign admin).
 - **Auth**
-  - `GET /auth/microsoft/login-url` — helper that returns the Microsoft authorize URL for a given PKCE `code_challenge` (optional `state`).
-  - `POST /auth/microsoft/token` — exchange Microsoft authorization code for AB Planner tokens.
+  - `GET /auth/microsoft/login-url` – helper that returns the Microsoft authorize URL for a given PKCE `code_challenge` (optional `state`).
+  - `POST /auth/microsoft/token` – exchange Microsoft authorization code for AB Planner tokens.
   - `POST /auth/refresh` — rotate tokens using a refresh token.
 - **Programs** (read for all; admin mutates)
   - `GET /programs`, `GET /programs/{id}`

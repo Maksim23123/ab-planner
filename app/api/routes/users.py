@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, Path
 from sqlalchemy.orm import Session
 
-from app.schemas.users import UserProfile
+from app.schemas.users import UserProfile, UserRoleUpdate
 from app.api import deps
 from app.services import user_service
 
@@ -31,3 +31,13 @@ def read_user(
     _admin: deps.CurrentActor = Depends(deps.require_admin),
 ):
     return user_service.get_user(db, user_id)
+
+
+@router.patch("/{user_id}/role", response_model=UserProfile)
+def set_user_role(
+    payload: UserRoleUpdate,
+    user_id: int = Path(..., description="User identifier"),
+    db: Session = Depends(deps.get_db),
+    _admin: deps.CurrentActor = Depends(deps.require_admin),
+):
+    return user_service.set_user_role(db, user_id, payload.role_id)
