@@ -35,7 +35,8 @@ Headers: `Authorization: Bearer <access_token>`
 - **Auth**
   - `GET /auth/microsoft/login-url` – helper that returns the Microsoft authorize URL for a given PKCE `code_challenge` (optional `state`).
   - `POST /auth/microsoft/token` – exchange Microsoft authorization code for AB Planner tokens.
-  - `POST /auth/refresh` — rotate tokens using a refresh token.
+  - `POST /auth/refresh` – rotate tokens using a refresh token.
+  - `POST /auth/logout` – revoke refresh tokens (all sessions for the user, or a specific one if `refresh_token` is provided). Access tokens are tied to a session JTI and fail once that session is revoked or expired.
 - **Programs** (read for all; admin mutates)
   - `GET /programs`, `GET /programs/{id}`
   - `POST /programs`, `PATCH /programs/{id}`, `DELETE /programs/{id}` (admin)
@@ -115,3 +116,12 @@ docker compose run --rm api python -m app.scripts.seed_db
 ```
 
 Both scripts ensure the database exists and run Alembic migrations. The minimal seeder leaves existing data intact, while the full seeder truncates tables and inserts the fixtures with stable IDs to match the mock API responses.
+
+## Maintenance
+
+- Prune expired auth sessions (e.g., daily cron):
+
+  ```bash
+  python -m app.scripts.cleanup_auth_sessions --grace-days 7
+  ```
+  (The API runs this cleanup at startup and daily in a background task.)

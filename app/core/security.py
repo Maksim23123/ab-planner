@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
-from typing import Any, Literal
+from typing import Any, Literal, Optional
 
 import jwt
 
@@ -17,11 +17,18 @@ class AuthTokenError(Exception):
     """Raised when creating or decoding auth tokens fails."""
 
 
-def _create_token(data: dict[str, Any], expires_delta: timedelta, token_type: Literal["access", "refresh"]) -> str:
+def _create_token(
+    data: dict[str, Any],
+    expires_delta: timedelta,
+    token_type: Literal["access", "refresh"],
+    *,
+    expires_at: Optional[datetime] = None,
+) -> str:
+    exp = expires_at or (datetime.now(timezone.utc) + expires_delta)
     payload = data.copy()
     payload.update(
         {
-            "exp": datetime.now(timezone.utc) + expires_delta,
+            "exp": exp,
             "type": token_type,
         }
     )
@@ -29,16 +36,18 @@ def _create_token(data: dict[str, Any], expires_delta: timedelta, token_type: Li
     return jwt.encode(payload, settings.auth_secret_key, algorithm=ALGORITHM)
 
 
-def create_access_token(user_id: int, role: str) -> str:
+def create_access_token(user_id: int, role: str, session_jti: str) -> str:
     settings = get_settings()
     expires_delta = timedelta(minutes=settings.auth_access_token_exp_minutes)
-    return _create_token({"sub": str(user_id), "user_id": user_id, "role": role}, expires_delta, ACCESS_TOKEN_TYPE)
+    payload = {"sub": str(user_id), "user_id": user_id, "role": role, "session_jti": session_jti}
+    return _create_token(payload, expires_delta, ACCESS_TOKEN_TYPE)
 
 
-def create_refresh_token(user_id: int) -> str:
+def create_refresh_token(user_id: int, jti: str, *, expires_at: Optional[datetime] = None) -> str:
     settings = get_settings()
     expires_delta = timedelta(minutes=settings.auth_refresh_token_exp_minutes)
-    return _create_token({"sub": str(user_id), "user_id": user_id}, expires_delta, REFRESH_TOKEN_TYPE)
+    payload = {"sub": str(user_id), "user_id": user_id, "jti": jti}
+    return _create_token(payload, expires_delta, REFRESH_TOKEN_TYPE, expires_at=expires_at)
 
 
 def decode_token(token: str, expected_type: Literal["access", "refresh"]) -> dict[str, Any]:

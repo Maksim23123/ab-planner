@@ -1,6 +1,7 @@
 # Bash command to run: python -m app.scripts.seed_db
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 from typing import Iterable
 
 from sqlalchemy import text
@@ -10,6 +11,7 @@ from app.core import mock_data
 from app.core.database import SessionLocal, ensure_database
 from app.core.run_migrations import ensure_schema_up_to_date
 from app.models import (
+    AuthSession,
     Group,
     GroupType,
     Lesson,
@@ -28,14 +30,14 @@ from app.models import (
 def _truncate_tables(session: Session) -> None:
     """Remove existing data so seeding is repeatable."""
     session.execute(
-        text(
-            "TRUNCATE TABLE "
-            "student_group_selection, notification_outbox, lessons, groups, group_types, "
-            "rooms, subjects, specializations, program_years, programs, fcm_tokens, "
-            "lecturer_profiles, change_logs, users, roles "
-            "RESTART IDENTITY CASCADE"
+            text(
+                "TRUNCATE TABLE "
+                "student_group_selection, notification_outbox, lessons, groups, group_types, "
+                "rooms, subjects, specializations, program_years, programs, fcm_tokens, "
+                "lecturer_profiles, change_logs, auth_sessions, users, roles "
+                "RESTART IDENTITY CASCADE"
+            )
         )
-    )
 
 
 def _sync_sequences(session: Session, tables: Iterable[str]) -> None:
@@ -134,12 +136,49 @@ def seed() -> None:
                 ]
             )
 
+            now = datetime.now(timezone.utc)
+            session.add_all(
+                [
+                    AuthSession(
+                        id=1,
+                        user_id=1,
+                        token_hash="expired_revoked_hash",
+                        jti="expired-revoked-jti",
+                        created_at=now - timedelta(days=20),
+                        expires_at=now - timedelta(days=10),
+                        revoked_at=now - timedelta(days=9),
+                        revoked_reason="seed expired revoked",
+                    ),
+                    AuthSession(
+                        id=2,
+                        user_id=1,
+                        token_hash="expired_active_hash",
+                        jti="expired-active-jti",
+                        created_at=now - timedelta(days=5),
+                        expires_at=now - timedelta(days=1),
+                        revoked_at=None,
+                        revoked_reason=None,
+                    ),
+                    AuthSession(
+                        id=3,
+                        user_id=2,
+                        token_hash="valid_hash",
+                        jti="valid-jti",
+                        created_at=now - timedelta(days=1),
+                        expires_at=now + timedelta(days=6),
+                        revoked_at=None,
+                        revoked_reason=None,
+                    ),
+                ]
+            )
+
             session.flush()  # ensure inserts are written before sequence sync
             _sync_sequences(
                 session,
                 [
                     "roles",
                     "users",
+                    "auth_sessions",
                     "programs",
                     "program_years",
                     "specializations",

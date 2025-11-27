@@ -9,6 +9,7 @@ from app.api import deps
 from app.core.config import get_settings
 from app.schemas.auth import (
     AuthTokens,
+    LogoutRequest,
     MicrosoftAuthRequest,
     MicrosoftLoginUrlResponse,
     RefreshRequest,
@@ -55,3 +56,12 @@ def refresh_tokens(
     db: Session = Depends(deps.get_db),
 ):
     return auth_service.refresh_session(db, payload.refresh_token)
+
+
+@router.post("/logout", status_code=204)
+def logout(
+    payload: LogoutRequest | None = None,
+    db: Session = Depends(deps.get_db),
+    actor: deps.CurrentActor = Depends(deps.get_current_actor),
+):
+    auth_service.logout(db, actor.user, payload)

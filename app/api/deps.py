@@ -1,12 +1,16 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 from fastapi import Depends, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 from typing import NamedTuple
 
 from app.core.database import SessionLocal
 from app.core import security
+from app.models import AuthSession
 from app.models.users import User
 
 
@@ -43,8 +47,21 @@ def get_current_actor(
         raise HTTPException(status_code=401, detail="Invalid access token") from exc
 
     user_id = payload.get("user_id")
+    session_jti = payload.get("session_jti")
     if not isinstance(user_id, int):
         raise HTTPException(status_code=401, detail="Invalid token payload")
+    if not isinstance(session_jti, str):
+        raise HTTPException(status_code=401, detail="Invalid token payload")
+
+    session = db.scalar(select(AuthSession).where(AuthSession.jti == session_jti))
+    now = datetime.now(timezone.utc)
+    if (
+        session is None
+        or session.user_id != user_id
+        or session.revoked_at is not None
+        or session.expires_at <= now
+    ):
+        raise HTTPException(status_code=401, detail="Invalid or expired session")
 
     user = db.get(User, user_id)
     if not user:
