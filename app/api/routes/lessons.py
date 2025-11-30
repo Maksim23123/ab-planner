@@ -33,7 +33,9 @@ def create_lesson(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
     if actor.role == "lecturer" and payload.lecturer_user_id != actor.user.id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
-    return lesson_service.create_lesson(db, payload.model_dump())
+    return lesson_service.create_lesson(
+        db, payload.model_dump(), actor_user_id=actor.user.id
+    )
 
 
 @router.post("/series", response_model=list[Lesson], status_code=status.HTTP_201_CREATED)
@@ -53,6 +55,7 @@ def create_lesson_series(
         base.model_dump(),
         occurrences=payload.occurrences,
         repeat_every_days=payload.repeat_every_days,
+        actor_user_id=actor.user.id,
     )
 
 
@@ -101,7 +104,7 @@ def update_lesson(
     else:
         data.pop("scope", None)
 
-    return lesson_service.update_lesson(db, lesson_id, data)
+    return lesson_service.update_lesson(db, lesson_id, data, actor_user_id=actor.user.id)
 
 
 @router.delete("/{lesson_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -115,4 +118,4 @@ def delete_lesson(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
     if actor.role == "lecturer" and lesson.lecturer_user_id != actor.user.id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
-    lesson_service.delete_lesson(db, lesson_id)
+    lesson_service.delete_lesson(db, lesson_id, actor_user_id=actor.user.id)

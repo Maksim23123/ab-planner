@@ -8,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload
 
 from app.models import Group, Lesson, Room, Subject, User
+from app.services.audit_service import record_change, serialize_model
 
 LessonModel = Lesson
 
@@ -66,7 +67,7 @@ def get_lesson(db: Session, lesson_id: int) -> LessonModel:
     return lesson
 
 
-def create_lesson(db: Session, data: Dict[str, Any]) -> LessonModel:
+def create_lesson(db: Session, data: Dict[str, Any], *, actor_user_id: int) -> LessonModel:
     _ensure_fk(db, Subject, data.get("subject_id"), "Subject")
     _ensure_fk(db, User, data.get("lecturer_user_id"), "Lecturer")
     _ensure_fk(db, Room, data.get("room_id"), "Room")
@@ -75,6 +76,16 @@ def create_lesson(db: Session, data: Dict[str, Any]) -> LessonModel:
 
     lesson = LessonModel(**data)
     db.add(lesson)
+    db.flush()
+    record_change(
+        db,
+        actor_user_id=actor_user_id,
+        entity=LessonModel.__tablename__,
+        entity_id=lesson.id,
+        action="create",
+        old_data=None,
+        new_data=serialize_model(lesson),
+    )
     db.commit()
     db.refresh(lesson)
     return get_lesson(db, lesson.id)
@@ -86,6 +97,7 @@ def create_lesson_series(
     *,
     occurrences: int,
     repeat_every_days: int,
+    actor_user_id: int,
 ) -> list[LessonModel]:
     if occurrences < 1:
         raise HTTPException(
@@ -118,6 +130,19 @@ def create_lesson_series(
         db.add(lesson)
         created.append(lesson)
 
+    db.flush()
+
+    for lesson in created:
+        record_change(
+            db,
+            actor_user_id=actor_user_id,
+            entity=LessonModel.__tablename__,
+            entity_id=lesson.id,
+            action="create",
+            old_data=None,
+            new_data=serialize_model(lesson),
+        )
+
     db.commit()
 
     ids = [lesson.id for lesson in created]
@@ -133,7 +158,7 @@ def create_lesson_series(
     return list(db.scalars(stmt).all())
 
 
-def update_lesson(db: Session, lesson_id: int, data: Dict[str, Any]) -> LessonModel:
+def update_lesson(db: Session, lesson_id: int, data: Dict[str, Any], *, actor_user_id: int) -> LessonModel:
     lesson = db.get(LessonModel, lesson_id)
     if not lesson:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Lesson not found")
@@ -147,17 +172,38 @@ def update_lesson(db: Session, lesson_id: int, data: Dict[str, Any]) -> LessonMo
     ends_at = data.get("ends_at", lesson.ends_at)
     _validate_time_window(starts_at, ends_at)
 
+    before = serialize_model(lesson)
     for field, value in data.items():
         setattr(lesson, field, value)
 
+    db.flush()
+    record_change(
+        db,
+        actor_user_id=actor_user_id,
+        entity=LessonModel.__tablename__,
+        entity_id=lesson.id,
+        action="update",
+        old_data=before,
+        new_data=serialize_model(lesson),
+    )
     db.commit()
     db.refresh(lesson)
     return get_lesson(db, lesson.id)
 
 
-def delete_lesson(db: Session, lesson_id: int) -> None:
+def delete_lesson(db: Session, lesson_id: int, *, actor_user_id: int) -> None:
     lesson = db.get(LessonModel, lesson_id)
     if not lesson:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Lesson not found")
+    before = serialize_model(lesson)
     db.delete(lesson)
+    record_change(
+        db,
+        actor_user_id=actor_user_id,
+        entity=LessonModel.__tablename__,
+        entity_id=lesson.id,
+        action="delete",
+        old_data=before,
+        new_data=None,
+    )
     db.commit()

@@ -29,9 +29,11 @@ def read_subject(
 def create_subject(
     payload: SubjectCreate,
     db: Session = Depends(deps.get_db),
-    _admin: deps.CurrentActor = Depends(deps.require_admin),
+    actor: deps.CurrentActor = Depends(deps.require_admin),
 ):
-    return catalog_service.create_subject(db, name=payload.name, code=payload.code)
+    return catalog_service.create_subject(
+        db, name=payload.name, code=payload.code, actor_user_id=actor.user.id
+    )
 
 
 @router.patch("/{subject_id}", response_model=Subject)
@@ -39,15 +41,17 @@ def update_subject(
     payload: SubjectUpdate,
     subject_id: int = Path(..., description="Subject identifier"),
     db: Session = Depends(deps.get_db),
-    _admin: deps.CurrentActor = Depends(deps.require_admin),
+    actor: deps.CurrentActor = Depends(deps.require_admin),
 ):
-    return catalog_service.update_subject(db, subject_id, name=payload.name, code=payload.code)
+    return catalog_service.update_subject(
+        db, subject_id, name=payload.name, code=payload.code, actor_user_id=actor.user.id
+    )
 
 
 @router.delete("/{subject_id}", status_code=204)
 def delete_subject(
     subject_id: int = Path(..., description="Subject identifier"),
     db: Session = Depends(deps.get_db),
-    _admin: deps.CurrentActor = Depends(deps.require_admin),
+    actor: deps.CurrentActor = Depends(deps.require_admin),
 ):
-    catalog_service.delete_subject(db, subject_id)
+    catalog_service.delete_subject(db, subject_id, actor_user_id=actor.user.id)

@@ -29,9 +29,11 @@ def read_program_year(
 def create_program_year(
     payload: ProgramYearCreate,
     db: Session = Depends(deps.get_db),
-    _admin: deps.CurrentActor = Depends(deps.require_admin),
+    actor: deps.CurrentActor = Depends(deps.require_admin),
 ):
-    return program_service.create_program_year(db, program_id=payload.program_id, year=payload.year)
+    return program_service.create_program_year(
+        db, program_id=payload.program_id, year=payload.year, actor_user_id=actor.user.id
+    )
 
 
 @router.patch("/{year_id}", response_model=ProgramYear)
@@ -39,10 +41,14 @@ def update_program_year(
     payload: ProgramYearUpdate,
     year_id: int = Path(..., description="Program year identifier"),
     db: Session = Depends(deps.get_db),
-    _admin: deps.CurrentActor = Depends(deps.require_admin),
+    actor: deps.CurrentActor = Depends(deps.require_admin),
 ):
     return program_service.update_program_year(
-        db, year_id, year=payload.year, program_id=payload.program_id
+        db,
+        year_id,
+        year=payload.year,
+        program_id=payload.program_id,
+        actor_user_id=actor.user.id,
     )
 
 
@@ -50,6 +56,6 @@ def update_program_year(
 def delete_program_year(
     year_id: int = Path(..., description="Program year identifier"),
     db: Session = Depends(deps.get_db),
-    _admin: deps.CurrentActor = Depends(deps.require_admin),
+    actor: deps.CurrentActor = Depends(deps.require_admin),
 ):
-    program_service.delete_program_year(db, year_id)
+    program_service.delete_program_year(db, year_id, actor_user_id=actor.user.id)

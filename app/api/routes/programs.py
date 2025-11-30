@@ -35,9 +35,9 @@ def read_program(
 def create_program(
     payload: ProgramCreate,
     db: Session = Depends(deps.get_db),
-    _admin: deps.CurrentActor = Depends(deps.require_admin),
+    actor: deps.CurrentActor = Depends(deps.require_admin),
 ):
-    return program_service.create_program(db, name=payload.name)
+    return program_service.create_program(db, name=payload.name, actor_user_id=actor.user.id)
 
 
 @router.patch("/{program_id}", response_model=ProgramBrief)
@@ -45,18 +45,20 @@ def update_program(
     payload: ProgramUpdate,
     program_id: int = Path(..., description="Program identifier"),
     db: Session = Depends(deps.get_db),
-    _admin: deps.CurrentActor = Depends(deps.require_admin),
+    actor: deps.CurrentActor = Depends(deps.require_admin),
 ):
-    return program_service.update_program(db, program_id, name=payload.name)
+    return program_service.update_program(
+        db, program_id, name=payload.name, actor_user_id=actor.user.id
+    )
 
 
 @router.delete("/{program_id}", status_code=204)
 def delete_program(
     program_id: int = Path(..., description="Program identifier"),
     db: Session = Depends(deps.get_db),
-    _admin: deps.CurrentActor = Depends(deps.require_admin),
+    actor: deps.CurrentActor = Depends(deps.require_admin),
 ):
-    program_service.delete_program(db, program_id)
+    program_service.delete_program(db, program_id, actor_user_id=actor.user.id)
 
 
 @router.get("/{program_id}/groups", response_model=list[Group])

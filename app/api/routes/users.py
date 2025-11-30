@@ -38,6 +38,8 @@ def set_user_role(
     payload: UserRoleUpdate,
     user_id: int = Path(..., description="User identifier"),
     db: Session = Depends(deps.get_db),
-    _admin: deps.CurrentActor = Depends(deps.require_admin),
+    actor: deps.CurrentActor = Depends(deps.require_admin),
 ):
-    return user_service.set_user_role(db, user_id, payload.role_id)
+    return user_service.set_user_role(
+        db, user_id, payload.role_id, actor_user_id=actor.user.id
+    )

@@ -37,7 +37,9 @@ def upsert_selection(
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Group does not match program year")
         if payload.specialization_id is not None and group.specialization_id != payload.specialization_id:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Group does not match specialization")
-    return selection_service.create_selection(db, group_id=payload.group_id, user_id=target_id)
+    return selection_service.create_selection(
+        db, group_id=payload.group_id, user_id=target_id, actor_user_id=actor.user.id
+    )
 
 
 @router.delete("", status_code=status.HTTP_204_NO_CONTENT)
@@ -49,4 +51,4 @@ def delete_selection(
     target_id = user_id or actor.user.id
     if user_id is not None and actor.role != "admin" and user_id != actor.user.id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
-    selection_service.delete_selection(db, user_id=target_id)
+    selection_service.delete_selection(db, user_id=target_id, actor_user_id=actor.user.id)

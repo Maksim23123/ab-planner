@@ -29,9 +29,11 @@ def read_specialization(
 def create_specialization(
     payload: SpecializationCreate,
     db: Session = Depends(deps.get_db),
-    _admin: deps.CurrentActor = Depends(deps.require_admin),
+    actor: deps.CurrentActor = Depends(deps.require_admin),
 ):
-    return program_service.create_specialization(db, program_id=payload.program_id, name=payload.name)
+    return program_service.create_specialization(
+        db, program_id=payload.program_id, name=payload.name, actor_user_id=actor.user.id
+    )
 
 
 @router.patch("/{spec_id}", response_model=Specialization)
@@ -39,13 +41,14 @@ def update_specialization(
     payload: SpecializationUpdate,
     spec_id: int = Path(..., description="Specialization identifier"),
     db: Session = Depends(deps.get_db),
-    _admin: deps.CurrentActor = Depends(deps.require_admin),
+    actor: deps.CurrentActor = Depends(deps.require_admin),
 ):
     return program_service.update_specialization(
         db,
         spec_id,
         name=payload.name,
         program_id=payload.program_id,
+        actor_user_id=actor.user.id,
     )
 
 
@@ -53,6 +56,6 @@ def update_specialization(
 def delete_specialization(
     spec_id: int = Path(..., description="Specialization identifier"),
     db: Session = Depends(deps.get_db),
-    _admin: deps.CurrentActor = Depends(deps.require_admin),
+    actor: deps.CurrentActor = Depends(deps.require_admin),
 ):
-    program_service.delete_specialization(db, spec_id)
+    program_service.delete_specialization(db, spec_id, actor_user_id=actor.user.id)

@@ -29,13 +29,14 @@ def read_room(
 def create_room(
     payload: RoomCreate,
     db: Session = Depends(deps.get_db),
-    _admin: deps.CurrentActor = Depends(deps.require_admin),
+    actor: deps.CurrentActor = Depends(deps.require_admin),
 ):
     return catalog_service.create_room(
         db,
         number=payload.number,
         building=payload.building,
         capacity=payload.capacity,
+        actor_user_id=actor.user.id,
     )
 
 
@@ -44,7 +45,7 @@ def update_room(
     payload: RoomUpdate,
     room_id: int = Path(..., description="Room identifier"),
     db: Session = Depends(deps.get_db),
-    _admin: deps.CurrentActor = Depends(deps.require_admin),
+    actor: deps.CurrentActor = Depends(deps.require_admin),
 ):
     return catalog_service.update_room(
         db,
@@ -52,6 +53,7 @@ def update_room(
         number=payload.number,
         building=payload.building,
         capacity=payload.capacity,
+        actor_user_id=actor.user.id,
     )
 
 
@@ -59,6 +61,6 @@ def update_room(
 def delete_room(
     room_id: int = Path(..., description="Room identifier"),
     db: Session = Depends(deps.get_db),
-    _admin: deps.CurrentActor = Depends(deps.require_admin),
+    actor: deps.CurrentActor = Depends(deps.require_admin),
 ):
-    catalog_service.delete_room(db, room_id)
+    catalog_service.delete_room(db, room_id, actor_user_id=actor.user.id)

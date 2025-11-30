@@ -5,6 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload
 
 from app.models import Role, User
+from app.services.audit_service import record_change, serialize_model
 
 
 def _with_role():
@@ -64,7 +65,7 @@ def get_user(db: Session, user_id: int) -> User:
     return get_user_profile(db, user_id)
 
 
-def set_user_role(db: Session, user_id: int, target_role_id: int) -> User:
+def set_user_role(db: Session, user_id: int, target_role_id: int, *, actor_user_id: int) -> User:
     user = get_user_profile(db, user_id)
     _ensure_role_mutable(user)
 
@@ -74,7 +75,18 @@ def set_user_role(db: Session, user_id: int, target_role_id: int) -> User:
     if current_role == desired:
         return user
 
+    before = serialize_model(user)
     user.role_id = target_role.id
+    db.flush()
+    record_change(
+        db,
+        actor_user_id=actor_user_id,
+        entity=User.__tablename__,
+        entity_id=user.id,
+        action="update",
+        old_data=before,
+        new_data=serialize_model(user),
+    )
     db.commit()
     db.refresh(user)
     return get_user_profile(db, user.id)

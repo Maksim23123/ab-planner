@@ -39,7 +39,7 @@ def read_group(
 def create_group(
     payload: GroupCreate,
     db: Session = Depends(deps.get_db),
-    _admin: deps.CurrentActor = Depends(deps.require_admin),
+    actor: deps.CurrentActor = Depends(deps.require_admin),
 ):
     return program_service.create_group(
         db,
@@ -48,6 +48,7 @@ def create_group(
         specialization_id=payload.specialization_id,
         group_type_code=payload.group_type,
         code=payload.code,
+        actor_user_id=actor.user.id,
     )
 
 
@@ -56,7 +57,7 @@ def update_group(
     payload: GroupUpdate,
     group_id: int = Path(..., description="Group identifier"),
     db: Session = Depends(deps.get_db),
-    _admin: deps.CurrentActor = Depends(deps.require_admin),
+    actor: deps.CurrentActor = Depends(deps.require_admin),
 ):
     return program_service.update_group(
         db,
@@ -66,6 +67,7 @@ def update_group(
         specialization_id=payload.specialization_id,
         group_type_code=payload.group_type,
         code=payload.code,
+        actor_user_id=actor.user.id,
     )
 
 
@@ -73,6 +75,6 @@ def update_group(
 def delete_group(
     group_id: int = Path(..., description="Group identifier"),
     db: Session = Depends(deps.get_db),
-    _admin: deps.CurrentActor = Depends(deps.require_admin),
+    actor: deps.CurrentActor = Depends(deps.require_admin),
 ):
-    program_service.delete_group(db, group_id)
+    program_service.delete_group(db, group_id, actor_user_id=actor.user.id)
