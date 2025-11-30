@@ -12,6 +12,7 @@ from app.core.database import SessionLocal, ensure_database
 from app.core.run_migrations import ensure_schema_up_to_date
 from app.models import (
     AuthSession,
+    ChangeLog,
     Group,
     GroupType,
     Lesson,
@@ -133,6 +134,60 @@ def seed() -> None:
                         selected_at=payload["selected_at"],
                     )
                     for payload in mock_data.STUDENT_SELECTIONS
+                ]
+            )
+
+            # Add a few historical change logs to validate pruning/retention.
+            seed_now = datetime.now(timezone.utc)
+
+            session.add_all(
+                [
+                    ChangeLog(
+                        actor_user_id=1,
+                        entity="programs",
+                        entity_id=1,
+                        action="update",
+                        old_data={"name": "Old CS"},
+                        new_data={"name": "Computer Science"},
+                        created_at=mock_data.NOW - timedelta(days=120),
+                    ),
+                    ChangeLog(
+                        actor_user_id=2,
+                        entity="lessons",
+                        entity_id=1,
+                        action="update",
+                        old_data={"status": "scheduled"},
+                        new_data={"status": "rescheduled"},
+                        created_at=mock_data.NOW - timedelta(days=45),
+                    ),
+                    ChangeLog(
+                        actor_user_id=3,
+                        entity="groups",
+                        entity_id=1,
+                        action="delete",
+                        old_data={"code": "CS-AI-OLD"},
+                        new_data=None,
+                        created_at=mock_data.NOW - timedelta(days=5),
+                    ),
+                    # Fresh entries that should survive pruning windows by default.
+                    ChangeLog(
+                        actor_user_id=1,
+                        entity="subjects",
+                        entity_id=2,
+                        action="update",
+                        old_data={"name": "ML"},
+                        new_data={"name": "Machine Learning Advanced"},
+                        created_at=seed_now - timedelta(days=10),
+                    ),
+                    ChangeLog(
+                        actor_user_id=2,
+                        entity="rooms",
+                        entity_id=1,
+                        action="create",
+                        old_data=None,
+                        new_data={"number": "A101", "building": "Main", "capacity": 100},
+                        created_at=seed_now - timedelta(days=1),
+                    ),
                 ]
             )
 

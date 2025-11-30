@@ -9,14 +9,25 @@ from app.core.database import ensure_database
 from app.core.run_migrations import ensure_schema_up_to_date
 from app.scripts.check_db import check_db
 from app.scripts.cleanup_auth_sessions import cleanup_auth_sessions
+from app.scripts.cleanup_change_logs import cleanup_change_logs
 
 
-async def _run_periodic_cleanup(stop_event: asyncio.Event, interval_hours: int = 24, grace_days: int = 7) -> None:
-    """Background task to prune expired auth sessions on a fixed interval."""
+async def _run_periodic_cleanup(
+    stop_event: asyncio.Event,
+    interval_hours: int = 24,
+    grace_days: int = 7,
+    audit_retention_days: int = 90,
+) -> None:
+    """Background task to prune expired auth sessions and stale audit logs on a fixed interval."""
     interval = interval_hours * 3600
     while not stop_event.is_set():
         try:
             cleanup_auth_sessions(grace_days=grace_days)
+        except Exception:
+            # Swallow exceptions to avoid crashing the app; could add logging here.
+            pass
+        try:
+            cleanup_change_logs(max_age_days=audit_retention_days)
         except Exception:
             # Swallow exceptions to avoid crashing the app; could add logging here.
             pass
@@ -33,6 +44,7 @@ async def lifespan(app: FastAPI):
 
     try:
         cleanup_auth_sessions()
+        cleanup_change_logs()
     except Exception:
         # Swallow exceptions to avoid blocking startup; could add logging.
         pass
