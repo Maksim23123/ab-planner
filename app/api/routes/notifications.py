@@ -11,14 +11,26 @@ router = APIRouter(prefix="/notifications", tags=["notifications"])
 @router.get("", response_model=list[Notification])
 def list_notifications(
     user_id: int | None = Query(default=None, description="Filter by user id"),
-    status: str | None = Query(default=None, description="Filter by notification status"),
+    delivery_status: str | None = Query(default=None, description="Filter by delivery status"),
+    read_status: str | None = Query(default=None, description="Filter by read status"),
+    status: str | None = Query(
+        default=None,
+        description="Deprecated: legacy status filter (uses delivery status)",
+        include_in_schema=False,
+    ),
     db: Session = Depends(deps.get_db),
     actor: deps.CurrentActor = Depends(deps.get_current_actor),
 ):
     target_id = user_id or actor.user.id
     if user_id is not None and actor.role != "admin" and user_id != actor.user.id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
-    return notification_service.list_notifications(db, user_id=target_id, status=status)
+    effective_delivery = delivery_status or status
+    return notification_service.list_notifications(
+        db,
+        user_id=target_id,
+        delivery_status=effective_delivery,
+        read_status=read_status,
+    )
 
 
 @router.post("", response_model=Notification, status_code=201)
@@ -31,7 +43,9 @@ def create_notification(
         db,
         user_id=payload.user_id,
         payload=payload.payload,
-        status_value=payload.status,
+        delivery_status=payload.delivery_status or "queued",
+        read_status=payload.read_status,
+        read=payload.read,
     )
 
 
@@ -45,4 +59,9 @@ def update_notification(
     record = notification_service.get_notification(db, notification_id)
     if actor.role != "admin" and record.user_id != actor.user.id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
-    return notification_service.update_notification(db, notification_id, status_value=payload.status)
+    return notification_service.update_notification(
+        db,
+        notification_id,
+        read=payload.read,
+        read_status_value=payload.read_status,
+    )

@@ -44,6 +44,9 @@ def _process_outbox_batch(
     service_account_json: str,
     project_id: str,
     batch_size: int,
+    retry_failed: bool,
+    max_attempts: int,
+    retry_backoff_seconds: int,
 ) -> None:
     """Run a single outbox batch in a worker thread to avoid blocking the event loop."""
     if not server_key and not service_account_json:
@@ -55,6 +58,9 @@ def _process_outbox_batch(
             service_account_json=service_account_json,
             project_id=project_id,
             limit=batch_size,
+            retry_failed=retry_failed,
+            max_attempts=max_attempts,
+            retry_backoff_seconds=retry_backoff_seconds,
         )
 
 
@@ -66,6 +72,9 @@ async def _run_notification_sender(
     project_id: str,
     interval_seconds: int = 60,
     batch_size: int = 50,
+    retry_failed: bool = True,
+    max_attempts: int = 3,
+    retry_backoff_seconds: int = 300,
 ) -> None:
     if not server_key and not service_account_json:
         return
@@ -78,6 +87,9 @@ async def _run_notification_sender(
                 service_account_json=service_account_json,
                 project_id=project_id,
                 batch_size=batch_size,
+                retry_failed=retry_failed,
+                max_attempts=max_attempts,
+                retry_backoff_seconds=retry_backoff_seconds,
             )
         except Exception:
             # Swallow exceptions to keep the sender loop alive; add logging if needed.

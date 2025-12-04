@@ -67,9 +67,9 @@ Headers: `Authorization: Bearer <access_token>`
   - `PUT /student-group-selection` (student own or admin with `user_id`)
   - `DELETE /student-group-selection` (same access rules)
 - **Notifications**
-  - `GET /notifications` (own; admin can query any `user_id`; optional `status` filter)
-  - `POST /notifications` (admin), `PATCH /notifications/{id}` (owner or admin)
-  - Lesson create/update/delete automatically enqueue notifications and push attempts for the lesson group and lecturer.
+  - `GET /notifications` (own; admin can query any `user_id`; filters: `delivery_status`, `read_status`)
+  - `POST /notifications` (admin), `PATCH /notifications/{id}` (owner or admin) to mark read/unread
+  - Lesson create/update/delete automatically enqueue unread notifications (delivery status queued) and push attempts for the lesson group and lecturer.
 - **FCM Tokens**
   - `GET /fcm-tokens` (own; admin can query any `user_id`)
   - `POST /fcm-tokens` to register a device token (`{ token, platform }`; admin may pass `user_id`)
@@ -134,9 +134,9 @@ Both scripts ensure the database exists and run Alembic migrations. The minimal 
 
 - Notification/push sender:
 
-  - The API drains the notification outbox every ~60 seconds when `FCM_SERVER_KEY` is set.
+  - The API drains the notification outbox every ~60 seconds when FCM credentials are set, retrying failed deliveries up to 3 times with a 5-minute backoff and tracking `delivery_status` (`queued` → `sent`/`failed`/`permanent_failure`/`skipped`).
   - Manual/cron-friendly run:
     ```bash
-    python -m app.scripts.send_notifications --limit 50 --retry-failed
+    python -m app.scripts.send_notifications --limit 50 --retry-failed --max-attempts 3 --retry-backoff-seconds 300
     ```
   - For FCM HTTP v1, configure `FCM_SERVICE_ACCOUNT_JSON` (inline JSON or path); `FCM_PROJECT_ID` overrides the project id if needed.

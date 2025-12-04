@@ -116,9 +116,13 @@ def seed() -> None:
                         id=payload["id"],
                         user_id=payload["user_id"],
                         payload=payload["payload"],
-                        status=payload["status"],
+                        delivery_status=payload["delivery_status"],
+                        read_status=payload["read_status"],
+                        read_at=payload.get("read_at"),
+                        last_error=payload.get("last_error"),
                         attempts=payload["attempts"],
                         created_at=payload["created_at"],
+                        last_attempt_at=payload.get("last_attempt_at"),
                         sent_at=payload["sent_at"],
                     )
                     for payload in mock_data.NOTIFICATIONS

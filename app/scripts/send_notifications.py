@@ -1,3 +1,4 @@
+# Bash command to run: python -m app.scripts.seed_db
 """Send queued notification outbox items via FCM."""
 from __future__ import annotations
 
@@ -8,7 +9,12 @@ from app.core.database import SessionLocal
 from app.services.push_service import process_outbox
 
 
-def send_queued_notifications(limit: int, retry_failed: bool) -> dict[str, int]:
+def send_queued_notifications(
+    limit: int,
+    retry_failed: bool,
+    max_attempts: int,
+    retry_backoff_seconds: int,
+) -> dict[str, int]:
     settings = get_settings()
     server_key = settings.fcm_server_key
     service_account_json = settings.fcm_service_account_json
@@ -25,6 +31,8 @@ def send_queued_notifications(limit: int, retry_failed: bool) -> dict[str, int]:
             project_id=project_id,
             limit=limit,
             retry_failed=retry_failed,
+            max_attempts=max_attempts,
+            retry_backoff_seconds=retry_backoff_seconds,
         )
     return summary
 
@@ -42,11 +50,29 @@ def main() -> None:
         action="store_true",
         help="Include previously failed notifications in this run",
     )
+    parser.add_argument(
+        "--max-attempts",
+        type=int,
+        default=3,
+        help="Stop retrying after this many attempts (default: 3)",
+    )
+    parser.add_argument(
+        "--retry-backoff-seconds",
+        type=int,
+        default=300,
+        help="Minimum seconds to wait before retrying a failed notification (default: 300)",
+    )
     args = parser.parse_args()
-    summary = send_queued_notifications(limit=args.limit, retry_failed=args.retry_failed)
+    summary = send_queued_notifications(
+        limit=args.limit,
+        retry_failed=args.retry_failed,
+        max_attempts=args.max_attempts,
+        retry_backoff_seconds=args.retry_backoff_seconds,
+    )
     print(
         f"Processed {summary.get('processed', 0)} notification(s): "
         f"sent={summary.get('sent', 0)}, failed={summary.get('failed', 0)}, "
+        f"permanent_failure={summary.get('permanent_failure', 0)}, "
         f"skipped={summary.get('skipped', 0)}."
     )
 

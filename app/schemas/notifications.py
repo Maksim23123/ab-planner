@@ -12,17 +12,24 @@ class Notification(BaseModel):
     id: int
     user_id: int
     payload: Dict[str, Any]
-    status: str
+    delivery_status: str
+    read_status: str
+    read_at: datetime | None
+    last_error: str | None = None
     attempts: int
     created_at: datetime
+    last_attempt_at: datetime | None = None
     sent_at: datetime | None
 
 
 class NotificationCreate(BaseModel):
     user_id: int
     payload: Dict[str, Any]
-    status: str = "queued"
+    delivery_status: str | None = "queued"
+    read_status: str | None = None
+    read: bool | None = None
 
 
 class NotificationUpdate(BaseModel):
-    status: str | None = None
+    read: bool | None = None
+    read_status: str | None = None

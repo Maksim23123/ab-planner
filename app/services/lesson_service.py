@@ -161,7 +161,12 @@ def _enqueue_lesson_notifications(
         action, lesson_snapshot, before_snapshot, subject_name, room_label
     )
     notification_service.enqueue_notifications(
-        db, user_ids=recipients, payload=payload, status_value="queued", commit=False
+        db,
+        user_ids=recipients,
+        payload=payload,
+        delivery_status="queued",
+        read_status="unread",
+        commit=False,
     )
 
 

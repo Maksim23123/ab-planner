@@ -143,12 +143,20 @@ def list_lessons(
     return payloads
 
 
-def list_notifications(user_id: Optional[int] = None, status: Optional[str] = None) -> List[Dict[str, Any]]:
+def list_notifications(
+    user_id: Optional[int] = None,
+    delivery_status: Optional[str] = None,
+    read_status: Optional[str] = None,
+) -> List[Dict[str, Any]]:
     settings = get_settings()
     target_id = user_id or settings.default_user_id
     notifications = [item for item in mock_data.NOTIFICATIONS if item["user_id"] == target_id]
-    if status:
-        notifications = [item for item in notifications if item["status"] == status]
+    if delivery_status:
+        notifications = [
+            item for item in notifications if item.get("delivery_status") == delivery_status
+        ]
+    if read_status:
+        notifications = [item for item in notifications if item.get("read_status") == read_status]
     return notifications
 
 

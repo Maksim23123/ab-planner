@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import json
+import logging
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Iterable, Optional
+from typing import Optional
 
 import httpx
 import jwt
-from sqlalchemy import select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session
 
 from app.models import FcmToken, NotificationOutbox
@@ -15,6 +16,7 @@ from app.models import FcmToken, NotificationOutbox
 FCM_SEND_URL_V1 = "https://fcm.googleapis.com/v1/projects/{project_id}/messages:send"
 GOOGLE_OAUTH_TOKEN_URL = "https://oauth2.googleapis.com/token"
 FCM_SCOPE = "https://www.googleapis.com/auth/firebase.messaging"
+logger = logging.getLogger(__name__)
 
 
 def _load_service_account(raw: str) -> dict:
@@ -196,6 +198,8 @@ def process_outbox(
     project_id: str | None = None,
     limit: int = 50,
     retry_failed: bool = False,
+    max_attempts: int = 3,
+    retry_backoff_seconds: int = 300,
 ) -> dict[str, int]:
     """Send queued notification outbox items via FCM.
 
@@ -212,20 +216,31 @@ def process_outbox(
     if not client and not server_key:
         return {"processed": 0, "sent": 0, "failed": 0, "skipped": 0}
 
-    target_statuses: Iterable[str] = ("queued",)
+    now = datetime.now(timezone.utc)
+    conditions = [NotificationOutbox.delivery_status == "queued"]
     if retry_failed:
-        target_statuses = ("queued", "failed")
+        retry_before = now - timedelta(seconds=retry_backoff_seconds)
+        conditions.append(
+            and_(
+                NotificationOutbox.delivery_status == "failed",
+                NotificationOutbox.attempts < max_attempts,
+                or_(
+                    NotificationOutbox.last_attempt_at.is_(None),
+                    NotificationOutbox.last_attempt_at <= retry_before,
+                ),
+            )
+        )
 
     stmt = (
         select(NotificationOutbox)
-        .where(NotificationOutbox.status.in_(target_statuses))
+        .where(or_(*conditions))
         .order_by(NotificationOutbox.created_at)
         .limit(limit)
         .with_for_update(skip_locked=True)
     )
     notifications = list(db.scalars(stmt).all())
 
-    summary = {"processed": 0, "sent": 0, "failed": 0, "skipped": 0}
+    summary = {"processed": 0, "sent": 0, "failed": 0, "skipped": 0, "permanent_failure": 0}
     if not notifications:
         return summary
 
@@ -234,17 +249,19 @@ def process_outbox(
         summary["processed"] += 1
         tokens = _load_tokens(db, record.user_id)
         record.attempts = (record.attempts or 0) + 1
+        record.last_attempt_at = now
 
         if not tokens:
-            record.status = "sent"
-            record.sent_at = now
-            summary["sent"] += 1
+            record.delivery_status = "skipped"
+            record.last_error = "no_tokens"
+            summary["skipped"] += 1
             continue
 
         payload = record.payload or {}
         successes = 0
         failures = 0
         invalid_tokens: list[FcmToken] = []
+        last_error: str | None = None
 
         for token in tokens:
             ok, error = _send_to_token(server_key, client, token.token, payload)
@@ -253,6 +270,7 @@ def process_outbox(
                 continue
 
             failures += 1
+            last_error = error or last_error or "send_failed"
             if error in {"NotRegistered", "InvalidRegistration", "UNREGISTERED"}:
                 invalid_tokens.append(token)
 
@@ -260,17 +278,37 @@ def process_outbox(
             db.delete(token)
 
         if successes > 0 and failures == 0:
-            record.status = "sent"
+            record.delivery_status = "sent"
             record.sent_at = now
+            record.last_error = None
             summary["sent"] += 1
         elif successes > 0:
-            # Partial success: keep status as sent to avoid reprocessing, but note failure count.
-            record.status = "sent"
-            record.sent_at = now
-            summary["sent"] += 1
+            record.delivery_status = "failed"
+            record.last_error = last_error or "partial_failure"
+            summary["failed"] += 1
         else:
-            record.status = "failed"
+            record.delivery_status = "failed"
+            record.last_error = last_error or "send_failed"
             summary["failed"] += 1
 
+        if record.delivery_status == "failed" and record.attempts >= max_attempts:
+            record.delivery_status = "permanent_failure"
+            summary["permanent_failure"] += 1
+            summary["failed"] = max(summary["failed"] - 1, 0)
+
     db.commit()
+    try:
+        logger.info(
+            "Notification outbox processed",
+            extra={
+                "processed": summary.get("processed", 0),
+                "sent": summary.get("sent", 0),
+                "failed": summary.get("failed", 0),
+                "permanent_failure": summary.get("permanent_failure", 0),
+                "skipped": summary.get("skipped", 0),
+            },
+        )
+    except Exception:
+        # Logging should not break the sender.
+        pass
     return summary
