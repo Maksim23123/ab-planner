@@ -83,3 +83,13 @@ def require_admin(actor: CurrentActor = Depends(get_current_actor)) -> CurrentAc
 def get_current_user(actor: CurrentActor = Depends(get_current_actor)) -> User:
     """Compatibility helper where only the user object is needed."""
     return actor.user
+
+
+def resolve_user_scope(actor: CurrentActor, requested_user_id: int | None) -> int:
+    """
+    Return the target user id while enforcing that non-admins can only act on themselves.
+    """
+    target_user_id = requested_user_id if requested_user_id is not None else actor.user.id
+    if actor.role != "admin" and target_user_id != actor.user.id:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    return target_user_id

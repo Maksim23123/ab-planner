@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
+from fastapi import APIRouter, Depends, Path, Query
 from sqlalchemy.orm import Session
 
 from app.schemas.notifications import Notification, NotificationCreate, NotificationUpdate
@@ -21,9 +21,7 @@ def list_notifications(
     db: Session = Depends(deps.get_db),
     actor: deps.CurrentActor = Depends(deps.get_current_actor),
 ):
-    target_id = user_id or actor.user.id
-    if user_id is not None and actor.role != "admin" and user_id != actor.user.id:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
+    target_id = deps.resolve_user_scope(actor, user_id)
     effective_delivery = delivery_status or status
     return notification_service.list_notifications(
         db,
@@ -57,8 +55,7 @@ def update_notification(
     actor: deps.CurrentActor = Depends(deps.get_current_actor),
 ):
     record = notification_service.get_notification(db, notification_id)
-    if actor.role != "admin" and record.user_id != actor.user.id:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
+    deps.resolve_user_scope(actor, record.user_id)
     return notification_service.update_notification(
         db,
         notification_id,

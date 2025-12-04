@@ -14,9 +14,7 @@ def list_selections(
     db: Session = Depends(deps.get_db),
     actor: deps.CurrentActor = Depends(deps.get_current_actor),
 ):
-    target_id = user_id or actor.user.id
-    if user_id is not None and actor.role != "admin" and user_id != actor.user.id:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
+    target_id = deps.resolve_user_scope(actor, user_id)
     return selection_service.list_selections(db, user_id=target_id)
 
 
@@ -26,9 +24,7 @@ def upsert_selection(
     db: Session = Depends(deps.get_db),
     actor: deps.CurrentActor = Depends(deps.get_current_actor),
 ):
-    target_id = payload.user_id or actor.user.id
-    if payload.user_id is not None and actor.role != "admin" and payload.user_id != actor.user.id:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
+    target_id = deps.resolve_user_scope(actor, payload.user_id)
     if any([payload.program_id, payload.program_year_id, payload.specialization_id]):
         group = program_service.get_group(db, payload.group_id)
         if payload.program_id is not None and group.program_id != payload.program_id:
@@ -48,7 +44,5 @@ def delete_selection(
     db: Session = Depends(deps.get_db),
     actor: deps.CurrentActor = Depends(deps.get_current_actor),
 ):
-    target_id = user_id or actor.user.id
-    if user_id is not None and actor.role != "admin" and user_id != actor.user.id:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
+    target_id = deps.resolve_user_scope(actor, user_id)
     selection_service.delete_selection(db, user_id=target_id, actor_user_id=actor.user.id)

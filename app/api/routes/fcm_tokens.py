@@ -15,9 +15,7 @@ def list_tokens(
     db: Session = Depends(deps.get_db),
     actor: deps.CurrentActor = Depends(deps.get_current_actor),
 ):
-    target_id = user_id or actor.user.id
-    if user_id is not None and actor.role != "admin" and user_id != actor.user.id:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
+    target_id = deps.resolve_user_scope(actor, user_id)
     return fcm_token_service.list_tokens(db, user_id=target_id)
 
 
@@ -27,9 +25,7 @@ def register_token(
     db: Session = Depends(deps.get_db),
     actor: deps.CurrentActor = Depends(deps.get_current_actor),
 ):
-    target_id = payload.user_id or actor.user.id
-    if payload.user_id is not None and actor.role != "admin" and payload.user_id != actor.user.id:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
+    target_id = deps.resolve_user_scope(actor, payload.user_id)
     return fcm_token_service.register_token(
         db, user_id=target_id, token=payload.token, platform=payload.platform
     )
@@ -44,6 +40,5 @@ def delete_token(
     record = db.get(FcmTokenModel, token_id)
     if not record:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Token not found")
-    if actor.role != "admin" and record.user_id != actor.user.id:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
+    deps.resolve_user_scope(actor, record.user_id)
     fcm_token_service.delete_token(db, token_id)
