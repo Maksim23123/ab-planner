@@ -2,6 +2,7 @@ from fastapi import APIRouter
 
 from app.api.routes import (
     auth,
+    fcm_tokens,
     groups,
     lessons,
     notifications,
@@ -26,4 +27,5 @@ api_router.include_router(subjects.router)
 api_router.include_router(rooms.router)
 api_router.include_router(lessons.router)
 api_router.include_router(notifications.router)
+api_router.include_router(fcm_tokens.router)
 api_router.include_router(selections.router)

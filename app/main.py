@@ -5,8 +5,9 @@ from fastapi import FastAPI
 
 from app.api.router import api_router
 from app.core.config import get_settings
-from app.core.database import ensure_database
+from app.core.database import SessionLocal, ensure_database
 from app.core.run_migrations import ensure_schema_up_to_date
+from app.services.push_service import process_outbox
 from app.scripts.check_db import check_db
 from app.scripts.cleanup_auth_sessions import cleanup_auth_sessions
 from app.scripts.cleanup_change_logs import cleanup_change_logs
@@ -37,6 +38,56 @@ async def _run_periodic_cleanup(
             continue
 
 
+def _process_outbox_batch(
+    *,
+    server_key: str,
+    service_account_json: str,
+    project_id: str,
+    batch_size: int,
+) -> None:
+    """Run a single outbox batch in a worker thread to avoid blocking the event loop."""
+    if not server_key and not service_account_json:
+        return
+    with SessionLocal() as session:
+        process_outbox(
+            session,
+            server_key=server_key,
+            service_account_json=service_account_json,
+            project_id=project_id,
+            limit=batch_size,
+        )
+
+
+async def _run_notification_sender(
+    stop_event: asyncio.Event,
+    *,
+    server_key: str,
+    service_account_json: str,
+    project_id: str,
+    interval_seconds: int = 60,
+    batch_size: int = 50,
+) -> None:
+    if not server_key and not service_account_json:
+        return
+
+    while not stop_event.is_set():
+        try:
+            await asyncio.to_thread(
+                _process_outbox_batch,
+                server_key=server_key,
+                service_account_json=service_account_json,
+                project_id=project_id,
+                batch_size=batch_size,
+            )
+        except Exception:
+            # Swallow exceptions to keep the sender loop alive; add logging if needed.
+            pass
+        try:
+            await asyncio.wait_for(stop_event.wait(), timeout=interval_seconds)
+        except asyncio.TimeoutError:
+            continue
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     ensure_database()
@@ -49,13 +100,24 @@ async def lifespan(app: FastAPI):
         # Swallow exceptions to avoid blocking startup; could add logging.
         pass
 
+    settings = get_settings()
     stop_event = asyncio.Event()
     cleanup_task = asyncio.create_task(_run_periodic_cleanup(stop_event))
+    sender_task = asyncio.create_task(
+        _run_notification_sender(
+            stop_event,
+            server_key=settings.fcm_server_key,
+            service_account_json=settings.fcm_service_account_json,
+            project_id=settings.fcm_project_id,
+            interval_seconds=60,
+            batch_size=50,
+        )
+    )
     try:
         yield
     finally:
         stop_event.set()
-        await cleanup_task
+        await asyncio.gather(cleanup_task, sender_task)
 
 
 def create_app() -> FastAPI:

@@ -7,8 +7,9 @@ from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload
 
-from app.models import Group, Lesson, Room, Subject, User
+from app.models import Group, Lesson, Room, StudentGroupSelection, Subject, User
 from app.services.audit_service import record_change, serialize_model
+from app.services import notification_service
 
 LessonModel = Lesson
 
@@ -40,6 +41,128 @@ def _ensure_fk(db: Session, model, pk: int | None, label: str) -> None:
     exists = db.get(model, pk)
     if not exists:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"{label} not found")
+
+
+def _format_dt(value: Any) -> str:
+    if isinstance(value, datetime):
+        return value.strftime("%Y-%m-%d %H:%M")
+    if isinstance(value, str):
+        try:
+            parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+            return parsed.strftime("%Y-%m-%d %H:%M")
+        except ValueError:
+            return value
+    return str(value)
+
+
+def _time_window_str(lesson_data: dict[str, Any]) -> str:
+    start = lesson_data.get("starts_at")
+    end = lesson_data.get("ends_at")
+    if start and end:
+        return f"{_format_dt(start)} - {_format_dt(end)}"
+    if start:
+        return _format_dt(start)
+    return ""
+
+
+def _lesson_context(db: Session, lesson_data: dict[str, Any]) -> tuple[str, str]:
+    subject = db.get(Subject, lesson_data.get("subject_id"))
+    room = db.get(Room, lesson_data.get("room_id"))
+    subject_name = subject.name if subject else "Lesson"
+    room_label = (
+        f"{room.building} {room.number}" if room else f"Room {lesson_data.get('room_id')}"
+    )
+    return subject_name, room_label
+
+
+def _lesson_recipients(db: Session, lesson_data: dict[str, Any]) -> list[int]:
+    user_ids: set[int] = set()
+    lecturer_id = lesson_data.get("lecturer_user_id")
+    group_id = lesson_data.get("group_id")
+    if lecturer_id:
+        user_ids.add(int(lecturer_id))
+    if group_id:
+        stmt = select(StudentGroupSelection.user_id).where(
+            StudentGroupSelection.group_id == group_id
+        )
+        user_ids.update(db.scalars(stmt).all())
+    return list(user_ids)
+
+
+def _lesson_notification_payload(
+    action: str,
+    lesson_data: dict[str, Any],
+    before: dict[str, Any] | None,
+    subject_name: str,
+    room_label: str,
+) -> dict[str, Any]:
+    title_map = {
+        "created": "New lesson scheduled",
+        "updated": "Lesson updated",
+        "deleted": "Lesson canceled",
+    }
+    title = title_map.get(action, "Lesson update")
+    time_window = _time_window_str(lesson_data)
+    place = f"{time_window} @ {room_label}" if time_window else room_label
+
+    changes: list[str] = []
+    if before:
+        for field, label in (
+            ("starts_at", "time"),
+            ("ends_at", "time"),
+            ("room_id", "room"),
+            ("status", "status"),
+            ("lesson_type", "type"),
+        ):
+            if before.get(field) != lesson_data.get(field):
+                changes.append(label)
+    change_text = ", ".join(changes) if changes else "details updated"
+
+    if action == "created":
+        body = f"{subject_name} at {place}"
+    elif action == "deleted":
+        body = f"{subject_name} at {place} was canceled"
+    else:
+        body = f"{subject_name}: {change_text}. {place}"
+
+    data_payload = {
+        "lesson_id": lesson_data.get("id"),
+        "group_id": lesson_data.get("group_id"),
+        "subject_id": lesson_data.get("subject_id"),
+        "room_id": lesson_data.get("room_id"),
+        "action": action,
+        "starts_at": lesson_data.get("starts_at"),
+        "ends_at": lesson_data.get("ends_at"),
+        "status": lesson_data.get("status"),
+        "lesson_type": lesson_data.get("lesson_type"),
+    }
+    if before:
+        data_payload["previous"] = {
+            key: before.get(key)
+            for key in ("starts_at", "ends_at", "room_id", "status", "lesson_type")
+            if before.get(key) is not None
+        }
+
+    return {"title": title, "body": body, "data": data_payload}
+
+
+def _enqueue_lesson_notifications(
+    db: Session,
+    *,
+    action: str,
+    lesson_snapshot: dict[str, Any],
+    before_snapshot: dict[str, Any] | None = None,
+) -> None:
+    recipients = _lesson_recipients(db, lesson_snapshot)
+    if not recipients:
+        return
+    subject_name, room_label = _lesson_context(db, lesson_snapshot)
+    payload = _lesson_notification_payload(
+        action, lesson_snapshot, before_snapshot, subject_name, room_label
+    )
+    notification_service.enqueue_notifications(
+        db, user_ids=recipients, payload=payload, status_value="queued", commit=False
+    )
 
 
 def list_lessons(
@@ -77,6 +200,7 @@ def create_lesson(db: Session, data: Dict[str, Any], *, actor_user_id: int) -> L
     lesson = LessonModel(**data)
     db.add(lesson)
     db.flush()
+    lesson_snapshot = serialize_model(lesson)
     record_change(
         db,
         actor_user_id=actor_user_id,
@@ -84,8 +208,9 @@ def create_lesson(db: Session, data: Dict[str, Any], *, actor_user_id: int) -> L
         entity_id=lesson.id,
         action="create",
         old_data=None,
-        new_data=serialize_model(lesson),
+        new_data=lesson_snapshot,
     )
+    _enqueue_lesson_notifications(db, action="created", lesson_snapshot=lesson_snapshot)
     db.commit()
     db.refresh(lesson)
     return get_lesson(db, lesson.id)
@@ -133,6 +258,7 @@ def create_lesson_series(
     db.flush()
 
     for lesson in created:
+        lesson_snapshot = serialize_model(lesson)
         record_change(
             db,
             actor_user_id=actor_user_id,
@@ -140,8 +266,9 @@ def create_lesson_series(
             entity_id=lesson.id,
             action="create",
             old_data=None,
-            new_data=serialize_model(lesson),
+            new_data=lesson_snapshot,
         )
+        _enqueue_lesson_notifications(db, action="created", lesson_snapshot=lesson_snapshot)
 
     db.commit()
 
@@ -177,6 +304,7 @@ def update_lesson(db: Session, lesson_id: int, data: Dict[str, Any], *, actor_us
         setattr(lesson, field, value)
 
     db.flush()
+    after = serialize_model(lesson)
     record_change(
         db,
         actor_user_id=actor_user_id,
@@ -184,7 +312,13 @@ def update_lesson(db: Session, lesson_id: int, data: Dict[str, Any], *, actor_us
         entity_id=lesson.id,
         action="update",
         old_data=before,
-        new_data=serialize_model(lesson),
+        new_data=after,
+    )
+    _enqueue_lesson_notifications(
+        db,
+        action="updated",
+        lesson_snapshot=after,
+        before_snapshot=before,
     )
     db.commit()
     db.refresh(lesson)
@@ -205,5 +339,11 @@ def delete_lesson(db: Session, lesson_id: int, *, actor_user_id: int) -> None:
         action="delete",
         old_data=before,
         new_data=None,
+    )
+    _enqueue_lesson_notifications(
+        db,
+        action="deleted",
+        lesson_snapshot=before,
+        before_snapshot=before,
     )
     db.commit()

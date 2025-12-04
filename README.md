@@ -14,6 +14,7 @@ AB Planner is a FastAPI backend that serves both administrative and student-faci
    docker compose up --build
    ```
    The API becomes available on `http://localhost:8000` and Postgres on `localhost:5432`.
+   To enable push delivery, set either `FCM_SERVICE_ACCOUNT_JSON` (preferred, inline JSON or path) or `FCM_SERVER_KEY` (legacy) in your `.env` (optional `FCM_PROJECT_ID`/`FCM_SENDER_ID`).
 3. **Explore the API** — Open `http://localhost:8000/docs` to try the endpoints.
 
 ## API surface (spec-aligned)
@@ -68,6 +69,11 @@ Headers: `Authorization: Bearer <access_token>`
 - **Notifications**
   - `GET /notifications` (own; admin can query any `user_id`; optional `status` filter)
   - `POST /notifications` (admin), `PATCH /notifications/{id}` (owner or admin)
+  - Lesson create/update/delete automatically enqueue notifications and push attempts for the lesson group and lecturer.
+- **FCM Tokens**
+  - `GET /fcm-tokens` (own; admin can query any `user_id`)
+  - `POST /fcm-tokens` to register a device token (`{ token, platform }`; admin may pass `user_id`)
+  - `DELETE /fcm-tokens/{id}` (owner or admin)
 
 ## Database models & migrations
 
@@ -125,3 +131,12 @@ Both scripts ensure the database exists and run Alembic migrations. The minimal 
   python -m app.scripts.cleanup_auth_sessions --grace-days 7
   ```
   (The API runs this cleanup at startup and daily in a background task.)
+
+- Notification/push sender:
+
+  - The API drains the notification outbox every ~60 seconds when `FCM_SERVER_KEY` is set.
+  - Manual/cron-friendly run:
+    ```bash
+    python -m app.scripts.send_notifications --limit 50 --retry-failed
+    ```
+  - For FCM HTTP v1, configure `FCM_SERVICE_ACCOUNT_JSON` (inline JSON or path); `FCM_PROJECT_ID` overrides the project id if needed.

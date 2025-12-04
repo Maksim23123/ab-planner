@@ -26,6 +26,11 @@ class Settings(BaseSettings):
     auth_refresh_token_exp_minutes: int = Field(60 * 24 * 30, alias="AUTH_REFRESH_TOKEN_EXPIRES_MINUTES")
     auth_default_role_code: str = Field("student", alias="AUTH_DEFAULT_ROLE")
 
+    fcm_server_key: str = Field("", alias="FCM_SERVER_KEY")
+    fcm_sender_id: str = Field("", alias="FCM_SENDER_ID")
+    fcm_service_account_json: str = Field("", alias="FCM_SERVICE_ACCOUNT_JSON")
+    fcm_project_id: str = Field("", alias="FCM_PROJECT_ID")
+
     # Seeder options (optional)
     seed_admin: bool = Field(False, alias="SEED_ADMIN")
     admin_email: str = Field("admin@example.edu", alias="ADMIN_EMAIL")

@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from typing import Iterable
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
-from fastapi import HTTPException
+from fastapi import HTTPException, status
 
 from app.models import NotificationOutbox
 
@@ -38,16 +39,46 @@ def update_notification(db: Session, notification_id: int, *, status_value: str 
     return record
 
 
+def enqueue_notifications(
+    db: Session,
+    *,
+    user_ids: Iterable[int],
+    payload: dict,
+    status_value: str = "queued",
+    commit: bool = False,
+) -> list[NotificationOutbox]:
+    """Queue notifications for multiple users. Optionally commits the transaction."""
+    now = datetime.now(timezone.utc)
+    records: list[NotificationOutbox] = []
+    for user_id in {uid for uid in user_ids if uid is not None}:
+        record = NotificationOutbox(
+            user_id=user_id,
+            payload=payload,
+            status=status_value,
+            attempts=0,
+            created_at=now,
+            sent_at=None,
+        )
+        db.add(record)
+        records.append(record)
+    if not records:
+        return []
+
+    if commit:
+        db.commit()
+        for record in records:
+            db.refresh(record)
+    else:
+        db.flush()
+    return records
+
+
 def create_notification(db: Session, *, user_id: int, payload: dict, status_value: str) -> NotificationOutbox:
-    record = NotificationOutbox(
-        user_id=user_id,
+    created = enqueue_notifications(
+        db,
+        user_ids=[user_id],
         payload=payload,
-        status=status_value,
-        attempts=0,
-        created_at=datetime.now(timezone.utc),
-        sent_at=None,
+        status_value=status_value,
+        commit=True,
     )
-    db.add(record)
-    db.commit()
-    db.refresh(record)
-    return record
+    return created[0]

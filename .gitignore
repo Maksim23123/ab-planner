@@ -136,6 +136,10 @@ ENV/
 env.bak/
 venv.bak/
 
+# Firebase/Google service accounts
+*firebase-adminsdk-*.json
+*service-account*.json
+
 # Spyder project settings
 .spyderproject
 .spyproject
