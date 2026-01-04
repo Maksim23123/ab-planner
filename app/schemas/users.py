@@ -4,6 +4,8 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict
 
+from app.schemas.programs import Group
+
 
 class Role(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -24,6 +26,10 @@ class UserSummary(BaseModel):
 class UserProfile(UserSummary):
     role: Role
     created_at: datetime
+
+
+class UserProfileWithGroups(UserProfile):
+    selected_groups: list[Group]
 
 
 class UserRoleUpdate(BaseModel):

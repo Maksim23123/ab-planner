@@ -1,19 +1,28 @@
 from fastapi import APIRouter, Depends, Path
 from sqlalchemy.orm import Session
 
-from app.schemas.users import UserProfile, UserRoleUpdate
+from app.schemas.users import UserProfile, UserProfileWithGroups, UserRoleUpdate
 from app.api import deps
-from app.services import user_service
+from app.services import selection_service, user_service
 
 router = APIRouter(prefix="/users", tags=["users"])
 
 
-@router.get("/me", response_model=UserProfile)
+@router.get("/me", response_model=UserProfileWithGroups)
 def read_current_user(
     db: Session = Depends(deps.get_db),
     actor: deps.CurrentActor = Depends(deps.get_current_actor),
 ):
-    return user_service.get_user_profile(db, actor.user.id)
+    user = user_service.get_user_profile(db, actor.user.id)
+    selected_groups = selection_service.list_selected_groups(db, user_id=actor.user.id)
+    return {
+        "id": user.id,
+        "name": user.name,
+        "email": user.email,
+        "role": user.role,
+        "created_at": user.created_at,
+        "selected_groups": selected_groups,
+    }
 
 
 @router.get("", response_model=list[UserProfile])

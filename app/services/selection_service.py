@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 
 from fastapi import HTTPException, status
 from sqlalchemy import delete, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.models import Group, StudentGroupSelection, User
 from app.services.audit_service import record_change, serialize_model
@@ -15,6 +15,22 @@ def list_selections(db: Session, *, user_id: int) -> list[StudentGroupSelection]
         select(StudentGroupSelection)
         .where(StudentGroupSelection.user_id == user_id)
         .order_by(StudentGroupSelection.selected_at.desc())
+    )
+    return list(db.scalars(stmt).all())
+
+
+def list_selected_groups(db: Session, *, user_id: int) -> list[Group]:
+    stmt = (
+        select(Group)
+        .join(StudentGroupSelection, StudentGroupSelection.group_id == Group.id)
+        .options(
+            joinedload(Group.program),
+            joinedload(Group.program_year),
+            joinedload(Group.specialization),
+            joinedload(Group.group_type),
+        )
+        .where(StudentGroupSelection.user_id == user_id)
+        .order_by(StudentGroupSelection.selected_at.desc(), Group.id)
     )
     return list(db.scalars(stmt).all())
 
