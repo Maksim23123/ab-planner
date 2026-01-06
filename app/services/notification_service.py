@@ -7,7 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 from fastapi import HTTPException, status
 
-from app.models import NotificationOutbox
+from app.models import Group, NotificationOutbox, StudentGroupSelection
 
 
 def list_notifications(
@@ -117,3 +117,57 @@ def create_notification(
         commit=True,
     )
     return created[0]
+
+
+def broadcast_group_notification(
+    db: Session,
+    *,
+    group_ids: list[int],
+    title: str,
+    body: str,
+    data: dict | None = None,
+) -> dict:
+    normalized_group_ids = sorted({int(group_id) for group_id in group_ids if group_id is not None})
+    if not normalized_group_ids:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="group_ids must include at least one group",
+        )
+
+    existing_ids = set(
+        db.scalars(select(Group.id).where(Group.id.in_(normalized_group_ids))).all()
+    )
+    missing = [group_id for group_id in normalized_group_ids if group_id not in existing_ids]
+    if missing:
+        missing_str = ", ".join(str(group_id) for group_id in missing)
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Group not found: {missing_str}",
+        )
+
+    user_ids = db.scalars(
+        select(StudentGroupSelection.user_id)
+        .where(StudentGroupSelection.group_id.in_(normalized_group_ids))
+        .distinct()
+    ).all()
+    unique_user_ids = sorted({user_id for user_id in user_ids if user_id is not None})
+
+    payload_data = dict(data or {})
+    payload_data.setdefault("group_ids", normalized_group_ids)
+    payload = {"title": title, "body": body, "data": payload_data}
+    records = enqueue_notifications(
+        db,
+        user_ids=unique_user_ids,
+        payload=payload,
+        delivery_status="queued",
+        read_status="unread",
+        commit=False,
+    )
+    if records:
+        db.commit()
+
+    return {
+        "group_ids": normalized_group_ids,
+        "user_count": len(unique_user_ids),
+        "notification_count": len(records),
+    }

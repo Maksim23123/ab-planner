@@ -1,7 +1,13 @@
 from fastapi import APIRouter, Depends, Path, Query
 from sqlalchemy.orm import Session
 
-from app.schemas.notifications import Notification, NotificationCreate, NotificationUpdate
+from app.schemas.notifications import (
+    Notification,
+    NotificationCreate,
+    NotificationGroupBroadcast,
+    NotificationGroupBroadcastResult,
+    NotificationUpdate,
+)
 from app.api import deps
 from app.services import notification_service
 
@@ -44,6 +50,21 @@ def create_notification(
         delivery_status=payload.delivery_status or "queued",
         read_status=payload.read_status,
         read=payload.read,
+    )
+
+
+@router.post("/group-broadcast", response_model=NotificationGroupBroadcastResult, status_code=201)
+def broadcast_group_notification(
+    payload: NotificationGroupBroadcast,
+    db: Session = Depends(deps.get_db),
+    _admin: deps.CurrentActor = Depends(deps.require_admin),
+):
+    return notification_service.broadcast_group_notification(
+        db,
+        group_ids=payload.group_ids,
+        title=payload.title,
+        body=payload.content,
+        data=payload.data,
     )
 
 
