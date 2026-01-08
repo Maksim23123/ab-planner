@@ -6,6 +6,7 @@ from app.api.routes import (
     groups,
     lessons,
     notifications,
+    plans,
     programs,
     program_years,
     rooms,
@@ -26,6 +27,7 @@ api_router.include_router(groups.router)
 api_router.include_router(subjects.router)
 api_router.include_router(rooms.router)
 api_router.include_router(lessons.router)
+api_router.include_router(plans.router)
 api_router.include_router(notifications.router)
 api_router.include_router(fcm_tokens.router)
 api_router.include_router(selections.router)
