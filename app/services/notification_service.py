@@ -7,7 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 from fastapi import HTTPException, status
 
-from app.models import Group, NotificationOutbox, StudentGroupSelection
+from app.models import Group, NotificationOutbox, StudentGroupSelection, User
 
 
 def list_notifications(
@@ -168,6 +168,36 @@ def broadcast_group_notification(
 
     return {
         "group_ids": normalized_group_ids,
+        "user_count": len(unique_user_ids),
+        "notification_count": len(records),
+    }
+
+
+def broadcast_all_notification(
+    db: Session,
+    *,
+    title: str,
+    body: str,
+    data: dict | None = None,
+) -> dict:
+    user_ids = db.scalars(select(User.id)).all()
+    unique_user_ids = sorted({user_id for user_id in user_ids if user_id is not None})
+
+    payload_data = dict(data or {})
+    payload_data.setdefault("audience", "all")
+    payload = {"title": title, "body": body, "data": payload_data}
+    records = enqueue_notifications(
+        db,
+        user_ids=unique_user_ids,
+        payload=payload,
+        delivery_status="queued",
+        read_status="unread",
+        commit=False,
+    )
+    if records:
+        db.commit()
+
+    return {
         "user_count": len(unique_user_ids),
         "notification_count": len(records),
     }

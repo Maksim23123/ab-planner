@@ -35,6 +35,17 @@ class NotificationUpdate(BaseModel):
     read_status: str | None = None
 
 
+class NotificationBroadcast(BaseModel):
+    title: str
+    content: str
+    data: Dict[str, Any] | None = None
+
+
+class NotificationBroadcastResult(BaseModel):
+    user_count: int
+    notification_count: int
+
+
 class NotificationGroupBroadcast(BaseModel):
     group_ids: list[int]
     title: str

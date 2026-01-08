@@ -3,6 +3,8 @@ from sqlalchemy.orm import Session
 
 from app.schemas.notifications import (
     Notification,
+    NotificationBroadcast,
+    NotificationBroadcastResult,
     NotificationCreate,
     NotificationGroupBroadcast,
     NotificationGroupBroadcastResult,
@@ -62,6 +64,20 @@ def broadcast_group_notification(
     return notification_service.broadcast_group_notification(
         db,
         group_ids=payload.group_ids,
+        title=payload.title,
+        body=payload.content,
+        data=payload.data,
+    )
+
+
+@router.post("/broadcast-all", response_model=NotificationBroadcastResult, status_code=201)
+def broadcast_all_notification(
+    payload: NotificationBroadcast,
+    db: Session = Depends(deps.get_db),
+    _admin: deps.CurrentActor = Depends(deps.require_admin),
+):
+    return notification_service.broadcast_all_notification(
+        db,
         title=payload.title,
         body=payload.content,
         data=payload.data,
